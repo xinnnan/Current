@@ -56,28 +56,6 @@ CREATE TABLE assets (
 );
 
 -- ============================================
--- Asset Instances (placed in maps)
--- ============================================
-CREATE TABLE asset_instances (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  project_id UUID REFERENCES projects(id) ON DELETE CASCADE NOT NULL,
-  asset_id UUID REFERENCES assets(id) ON DELETE CASCADE NOT NULL,
-  map_id UUID REFERENCES maps(id) ON DELETE CASCADE,
-  
-  -- Position on map
-  position_x FLOAT DEFAULT 0,
-  position_y FLOAT DEFAULT 0,
-  position_z FLOAT DEFAULT 0,
-  rotation FLOAT DEFAULT 0,
-  scale FLOAT DEFAULT 1,
-  
-  -- Transform matrix (for 3D)
-  transform JSONB DEFAULT '{}',
-  
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ============================================
 -- Maps
 -- ============================================
 CREATE TABLE maps (
@@ -99,6 +77,28 @@ CREATE TABLE maps (
   -- Metadata
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
+-- Asset Instances (placed in maps)
+-- ============================================
+CREATE TABLE asset_instances (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE NOT NULL,
+  asset_id UUID REFERENCES assets(id) ON DELETE CASCADE NOT NULL,
+  map_id UUID REFERENCES maps(id) ON DELETE CASCADE,
+  
+  -- Position on map
+  position_x FLOAT DEFAULT 0,
+  position_y FLOAT DEFAULT 0,
+  position_z FLOAT DEFAULT 0,
+  rotation FLOAT DEFAULT 0,
+  scale FLOAT DEFAULT 1,
+  
+  -- Transform matrix (for 3D)
+  transform JSONB DEFAULT '{}',
+  
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================
