@@ -2,9 +2,11 @@
 
 # ⚡ Current
 
+### Industrial Map & Physics Engine — AGV/Warehouse Automation Planning Platform
+
 ### 工业地图与物理引擎 — AGV 仓储自动化项目规划平台
 
-**上传照片 → AI 生成 3D 物理资产 → 绘制路网 → 运行仿真 → 吞吐量验证**
+**📸 Upload → 🧠 AI 3D Generation → 🗺️ Map Editing → 📊 Simulation → ✅ Throughput Validation**
 
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
@@ -12,9 +14,209 @@
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase)](https://supabase.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+[English](#english) · [中文](#中文)
+
 </div>
 
 ---
+
+<a id="english"></a>
+
+## 🎯 What is Current?
+
+**Current** is a lightweight industrial map and physics engine designed for the planning phase of AGV/warehouse automation projects.
+
+Before investing in expensive physical deployments, Current helps you:
+
+- 📸 **Photo-to-3D** — Upload equipment photos, AI generates Sim-Ready 3D physics models
+- 🗺️ **Industrial Map Editor** — Import CAD/blueprints, draw route networks, set traffic rules
+- 📊 **Simulation & Analysis** — Run discrete event simulations, analyze throughput, utilization, deadlocks
+- 🔥 **Heatmap Visualization** — Visualize segment congestion, identify bottlenecks
+- 🎮 **2D Edit, 3D View** — Seamlessly switch between 2D editing and 3D simulation views
+
+---
+
+## ✨ Core Features
+
+### Module 1: AI-Powered 3D Physics Asset Library
+
+| Feature | Description |
+|---------|-------------|
+| 📷 Photo Upload | Upload equipment photos as AI input |
+| 🧠 VLM Physics Reasoning | MiniMax M2.7-highspeed auto-identifies physical properties (material, density, friction, etc.) |
+| 🎨 3D Model Generation | Tripo3D API generates Sim-Ready GLB models |
+| ✂️ Mesh Splitting | Python microservice auto-splits multi-part models |
+| 📦 Asset Caching | Permanently cache to Supabase Storage after generation, no repeat inference |
+
+### Module 2: Industrial Map Editor
+
+| Feature | Description |
+|---------|-------------|
+| 📐 Base Map Import | DXF / PDF / JPEG support |
+| 📏 Scale Calibration | Two-point calibration wizard, precise pixel→meter mapping |
+| 🗂️ Multi-Layer Management | Base map, constraint zones, routing layers with independent visibility/lock/opacity |
+| 🔗 Path Drawing | Node/line/polygon tools with speed limits and mutex zones |
+| 🏗️ Asset Placement | Drag-and-drop 3D models from asset library onto map |
+
+### Module 3: Simulation & Analysis Engine
+
+| Feature | Description |
+|---------|-------------|
+| ⚡ Lightweight Simulation | Discrete event simulation for quick throughput validation |
+| 🔄 Dynamic Scheduling | RCS scheduler with conflict detection + deadlock prevention |
+| 📋 Task Templates | Configurable priority, dependency chains, and frequency-based task orchestration |
+| 📊 Dashboard | UPH / utilization / empty-run ratio / deadlocks / AGV details |
+| 🔥 Heatmap | Segment congestion color-coded visualization |
+| 🎮 2D/3D Views | Seamless SVG network and Three.js 3D scene switching |
+
+---
+
+## 🏗️ System Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Current Platform                      │
+├──────────────┬──────────────┬────────────────────────────┤
+│   Frontend   │    Backend   │      AI Services           │
+│   (Vercel)   │  (Supabase)  │   (Cloud API + Railway)    │
+├──────────────┼──────────────┼────────────────────────────┤
+│ Next.js 16   │ PostgreSQL   │ MiniMax M2.7-highspeed     │
+│ React 19     │ Auth         │ (VLM physics reasoning)    │
+│ Three.js     │ Storage      │ Tripo3D API                │
+│ Fabric.js    │ Realtime     │ (Image → 3D GLB)           │
+│ Zustand      │ RLS          │ Python Service (Railway)    │
+│ Tailwind CSS │              │ (Mesh split + URDF gen)     │
+└──────────────┴──────────────┴────────────────────────────┘
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 16 (App Router) + React 19 |
+| **3D Rendering** | React Three Fiber + Three.js + Drei |
+| **2D Editing** | Fabric.js v7 |
+| **State Management** | Zustand |
+| **Styling** | Tailwind CSS 4 + CSS Custom Properties |
+| **Backend** | Supabase (PostgreSQL + Auth + Storage + Realtime) |
+| **AI Inference** | MiniMax M2.7-highspeed + Tripo3D API |
+| **Post-processing** | Python FastAPI (Mesh Splitter + URDF Generator) |
+| **Deployment** | Vercel + Supabase + Railway |
+
+---
+
+## 📁 Project Structure
+
+```
+Current/
+├── current-web/                 # Frontend — Next.js 16 App
+│   ├── app/                     # App Router pages
+│   │   ├── (dashboard)/         # Dashboard (home/assets/map/simulation/settings)
+│   │   ├── auth/                # Auth (login/callback/logout)
+│   │   └── api/                 # API Routes (inference pipeline/project CRUD)
+│   ├── components/              # React components
+│   │   ├── editor-2d/           # 2D editor (MapEditor/LayerManager/CalibrationWizard)
+│   │   ├── scene-3d/            # 3D scene (SceneViewer/AGVAnimator/TubeNetwork)
+│   │   ├── simulation/          # Simulation (HeatmapOverlay/TaskTemplatePanel)
+│   │   ├── ui/                  # UI primitives (Button/Input/Card/Badge/Skeleton)
+│   │   └── viewer-3d/           # 3D model viewer
+│   ├── lib/                     # Core libraries
+│   │   ├── simulation/          # Simulation engine + RCS scheduler + kinematics
+│   │   ├── pathfinding/         # A* pathfinding
+│   │   ├── stores/              # Zustand state
+│   │   └── supabase/            # Supabase clients
+│   └── supabase/migrations/     # Database schema
+│
+├── current-inference/           # Python microservice — FastAPI
+│   ├── main.py                  # FastAPI entry
+│   ├── routers/                 # API routes (health/split/urdf)
+│   ├── services/                # Business logic (mesh_splitter)
+│   ├── Dockerfile               # Railway deployment
+│   └── requirements.txt         # Python dependencies
+│
+├── plans/                       # Architecture & planning docs
+└── agents.md                    # AI Agent progress tracking
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js >= 18.x
+- Python >= 3.10
+- pnpm (recommended)
+
+### Environment Variables
+
+```bash
+# current-web/.env.local
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+MINIMAX_API_KEY=your-minimax-api-key
+TRIPO_API_KEY=your-tripo-api-key
+INFERENCE_SERVICE_URL=http://localhost:8000
+```
+
+### Frontend Development
+
+```bash
+cd current-web
+pnpm install
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000)
+
+### Python Microservice
+
+```bash
+cd current-inference
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+Health check: [http://localhost:8000/health](http://localhost:8000/health)
+
+---
+
+## 📊 Cost Estimate
+
+| Service | Plan | Monthly Cost |
+|---------|------|-------------|
+| Vercel | Hobby (free) | $0 |
+| Supabase | Pro | $25 |
+| Railway | Developer | $5 |
+| MiniMax API | Pay-per-use | ~¥30-100 |
+| Tripo3D API | Pay-per-use | ~¥100-500 |
+| **Total** | | **~$30/mo + API usage** |
+
+> Single asset generation cost: ~¥0.40, permanently cached after generation.
+
+---
+
+## 📜 Acknowledgments
+
+This project builds upon concepts from [PhysX-Anything](https://github.com/xxRoma/PhysX-Anything) (CVPR 2026):
+- Original VLM + TRELLIS 3D generation pipeline → Replaced with cloud APIs (MiniMax + Tripo3D)
+- Mesh splitting algorithm (geodesic propagation) → Retained and wrapped as FastAPI service
+- URDF/MJCF generation logic → Retained and simplified
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+Original PhysX-Anything code is subject to S-Lab License 1.0 (non-commercial). Current project's original code is MIT licensed.
+
+---
+
+<a id="中文"></a>
 
 ## 🎯 Current 是什么？
 
@@ -69,10 +271,10 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Current Platform                      │
+│                    Current 平台                          │
 ├──────────────┬──────────────┬────────────────────────────┤
-│   Frontend   │    Backend   │      AI Services           │
-│   (Vercel)   │  (Supabase)  │   (Cloud API + Railway)    │
+│    前端      │    后端      │      AI 服务               │
+│  (Vercel)    │ (Supabase)   │  (云端 API + Railway)      │
 ├──────────────┼──────────────┼────────────────────────────┤
 │ Next.js 16   │ PostgreSQL   │ MiniMax M2.7-highspeed     │
 │ React 19     │ Auth         │ (VLM 物理属性推理)          │
@@ -98,47 +300,6 @@
 | **AI 推理** | MiniMax M2.7-highspeed + Tripo3D API |
 | **后处理** | Python FastAPI (Mesh Splitter + URDF Generator) |
 | **部署** | Vercel + Supabase + Railway |
-
----
-
-## 📁 项目结构
-
-```
-Current/
-├── current-web/                 # 前端 — Next.js 16 应用
-│   ├── app/                     # App Router 页面
-│   │   ├── (dashboard)/         # 仪表板页面（首页/资产/地图/仿真/设置）
-│   │   ├── auth/                # 认证页面（登录/回调/登出）
-│   │   └── api/                 # API Routes（推理流水线/项目CRUD）
-│   ├── components/              # React 组件
-│   │   ├── editor-2d/           # 2D 编辑器（MapEditor/LayerManager/CalibrationWizard）
-│   │   ├── scene-3d/            # 3D 场景（SceneViewer/AGVAnimator/TubeNetwork）
-│   │   ├── simulation/          # 仿真组件（HeatmapOverlay/TaskTemplatePanel）
-│   │   ├── ui/                  # 基础 UI 组件（Button/Input/Card/Badge/Skeleton）
-│   │   └── viewer-3d/           # 3D 模型查看器
-│   ├── lib/                     # 核心库
-│   │   ├── simulation/          # 仿真引擎 + RCS 调度器 + 运动学
-│   │   ├── pathfinding/         # A* 路径规划
-│   │   ├── stores/              # Zustand 状态
-│   │   └── supabase/            # Supabase 客户端
-│   └── supabase/migrations/     # 数据库 Schema
-│
-├── current-inference/           # Python 微服务 — FastAPI
-│   ├── main.py                  # FastAPI 入口
-│   ├── routers/                 # API 路由（health/split/urdf）
-│   ├── services/                # 业务逻辑（mesh_splitter）
-│   ├── Dockerfile               # Railway 部署配置
-│   └── requirements.txt         # Python 依赖
-│
-├── plans/                       # 架构设计与工作计划
-│   ├── architecture.md          # V1 架构（自建 GPU）
-│   ├── architecture-v2-cloud-api.md  # V2 架构（云端 API，当前采用）
-│   ├── deployment.md            # 生产部署指南
-│   ├── phase5-3d-upgrade.md     # 2D→3D 升级计划
-│   └── phase6-ui-optimization.md # UI/UX 优化计划
-│
-└── agents.md                    # AI Agent 进度追踪
-```
 
 ---
 
@@ -199,7 +360,7 @@ uvicorn main:app --reload --port 8000
 
 ---
 
-## 📄 致谢
+## 📜 致谢
 
 本项目基于 [PhysX-Anything](https://github.com/xxRoma/PhysX-Anything)（CVPR 2026）的思路进行改造：
 - 原始 VLM + TRELLIS 3D 生成流水线 → 替换为云端 API（MiniMax + Tripo3D）
@@ -208,7 +369,7 @@ uvicorn main:app --reload --port 8000
 
 ---
 
-## 📜 许可证
+## 📄 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
 
