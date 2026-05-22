@@ -1,197 +1,163 @@
-<div align="left">
-<h1 align="center">PhysX-Anything: Simulation-Ready Physical 3D Assets from Single Image
-</h1>
-<p align="center"><a href="https://arxiv.org/abs/2511.13648"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
-<a href='https://physx-anything.github.io/'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=homepage&logoColor=white' alt='Project Page'></a>
-<a href='https://huggingface.co/datasets/Caoza/PhysX-Mobility'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset-blue'></a>
-<a href='https://youtu.be/okMms-NdxMk'><img src='https://img.shields.io/youtube/views/okMms-NdxMk'></a>
-<div align="center">
-    <a href="https://ziangcao0312.github.io/" target="_blank">Ziang Cao</a><sup>1</sup>,
-     <a href="https://hongfz16.github.io/" target="_blank">Fangzhou Hong</a><sup>1</sup>,
-    <a href="https://frozenburning.github.io/" target="_blank">Zhaoxi Chen</a><sup>1</sup>,
-    <a href="https://github.com/paul007pl" target="_blank">Liang Pan</a><sup>2</sup>,
-    <a href="https://liuziwei7.github.io/" target="_blank">Ziwei Liu</a><sup>1</sup>
-</div>
-<div align="center">
-    <sup>1</sup>S-Lab, Nanyang Technological University&emsp; <sup>2</sup>Shanghai AI Laboratory
-</div>
-<div>
+# Current
 
+> 轻量级工业地图与物理引擎 — 专注 AGV/仓储自动化项目规划阶段的吞吐量验证与运力测算
 
+---
 
-<div style="width: 100%; text-align: center; margin:auto;">
-    <img style="width:100%" src="img/teaser.png">
-</div>
+## 🎯 产品定位
 
+Current 摒弃传统大型工业仿真软件繁琐的建模流程与冗余交互，聚焦解决两个核心痛点：
 
-## 🏆 News
+1. **非标资产建模慢** — 基于前沿视觉大模型，实现现场实景照片到 Sim-Ready 3D 物理资产的"零代码"转换
+2. **地图路径测算效率低** — 提供高度敏捷的 2D 布局编辑器，打通任意格式客户图纸（CAD/PDF/JPEG）与底层控制系统的路径映射
 
-- PhysX-Anything has been accepted by CVPR 2026🎉
-- We release the fine-tuning code of PhysX-Anything🎉
-- We release the inference code of PhysX-Anything and our new dataset PhysX-Mobility 🎉
+---
 
-## PhysX-Anything
-
-### Installation
-
-1. Clone the repo:
+## 🏗️ 系统架构
 
 ```
-git clone --recurse-submodules https://github.com/ziangcao0312/PhysX-Anything.git
-cd PhysX-Anything 
+┌─────────────────────────────────────────────────────────┐
+│                    浏览器客户端                           │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │ 3D 检视器 │  │ 2D 地图编辑器 │  │ 仿真数据看板      │  │
+│  │ (R3F)     │  │ (Fabric.js)  │  │ (Recharts)       │  │
+│  └──────────┘  └──────────────┘  └──────────────────┘  │
+└────────────────────────┬────────────────────────────────┘
+                         │ HTTPS
+┌────────────────────────▼────────────────────────────────┐
+│              Vercel — Next.js 15 App Router              │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ API Routes (BFF) — 代理云端 API + 业务逻辑        │   │
+│  └──────────────────────────────────────────────────┘   │
+└───────┬─────────────────┬──────────────────┬────────────┘
+        │                 │                  │
+   ┌────▼─────┐    ┌──────▼──────┐    ┌──────▼──────┐
+   │ Supabase │    │ 智谱 GLM-4V │    │  Tripo3D    │
+   │ PG+Auth  │    │ 物理属性推理 │    │  3D 生成    │
+   │ Storage  │    └─────────────┘    └─────────────┘
+   │ Realtime │
+   └────┬─────┘    ┌──────────────────────────────────┐
+        │          │ Railway — Python 微服务            │
+        └──────────│  • Mesh 部件分割 (3_split.py)     │
+                   │  • URDF/MJCF 生成 (4_simready.py) │
+                   └──────────────────────────────────┘
 ```
 
-2. Create a new conda environment named `physx-anything` and install the dependencies:
+---
+
+## ✨ 核心功能
+
+### 模块一：3D 物理资产库生成流水线
+
+- 📸 **现场即时采集** — 上传客户现场非标设备的单张 RGB 照片
+- 🧠 **AI 物理拓扑推理** — 智谱 GLM-4V 推理物理属性（密度、摩擦系数、质量、关节类型）
+- 🎮 **3D 模型生成** — Tripo3D API 生成 Sim-Ready 3D Mesh
+- 🔧 **物理属性校准** — WebGL 界面中检视模型，表单式编辑物理参数
+- 💾 **永久缓存** — 生成一次，永久存入资产库，不重复推理
+
+### 模块二：地图初始化与路网编辑器
+
+- 📐 **零门槛底图导入** — 支持 DXF / PDF / JPEG，自动铺底
+- 📏 **比例尺强制标定** — 画线段 + 输入真实距离 → 全局坐标系
+- 🗂️ **语义化多图层** — 底图层 / 限域层（障碍区）/ 路径层（路网）
+- 🛤️ **路径规则限定** — 限速、单双向、互斥区/死锁防范区
+- 🧭 **智能寻路** — A* 算法即时显示最优路径 + 预计行驶用时
+
+### 模块三：仿真引擎与可视化分析
+
+- ⚡ **轻量级调度** — 10x 极速运行，粗算理论产能
+- 🔄 **动态真实调度** — 还原 RCS 逻辑，实时路径抢占/重规划
+- 🔥 **3D 热力图** — 路段拥堵度可视化
+- 📊 **数据看板** — AGV 稼动率、吞吐量、阻塞状态实时刷新
+
+---
+
+## 🛠️ 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 前端框架 | Next.js 15 (App Router) + TypeScript |
+| UI | Tailwind CSS + shadcn/ui |
+| 3D 渲染 | React Three Fiber + drei |
+| 2D 编辑器 | Fabric.js |
+| 状态管理 | Zustand |
+| 后端服务 | Supabase (PostgreSQL + Auth + Storage + Realtime) |
+| AI 推理 | 智谱 GLM-4V-Plus + Tripo3D API |
+| 后处理 | Python FastAPI (Railway) |
+| 部署 | Vercel + Supabase + Railway |
+
+---
+
+## 📁 项目结构
+
+```
+Current/
+├── agents.md                    # AI Agent 进度追踪与经验记录
+├── plans/                       # 架构设计文档
+│   ├── architecture.md          # V1 架构（自建 GPU）
+│   └── architecture-v2-cloud-api.md  # V2 架构（云端 API）⭐
+├── current-web/                 # Next.js 前端项目（待创建）
+├── current-inference/           # Python 推理微服务（待创建）
+├── 3_split.py                   # 原始 Mesh 分割脚本（待迁移）
+├── 4_simready_gen.py            # 原始 URDF 生成脚本（待迁移）
+├── dataset/overall_prompt.txt   # VLM Prompt 模板
+└── supabase/                    # 数据库迁移（待创建）
+```
+
+---
+
+## 🚀 快速开始
+
+### 前置条件
+
+- Node.js >= 18.x
+- Python >= 3.10
+- pnpm (推荐)
+
+### 环境变量
 
 ```bash
-. ./setup.sh --new-env --basic --xformers --flash-attn --diffoctreerast --spconv --mipgaussian --kaolin --nvdiffrast
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# 云端 AI API
+ZHIPU_API_KEY=
+TRIPO_API_KEY=
+
+# Python 微服务
+INFERENCE_SERVICE_URL=
 ```
 
-**Note**: The detailed usage of `setup.sh` can be found at [TRELLIS](https://github.com/microsoft/TRELLIS)
-
-3. Install the dependencies for Qwen2.5:
+### 开发启动
 
 ```bash
-pip install transformers==4.50.0
-pip install qwen-vl-utils
-pip install 'accelerate>=0.26.0'
-```
+# 前端
+cd current-web
+pnpm install
+pnpm dev
 
-**Note**: We release the `requirements.txt` file. You can install all dependencies by running:
-
-```bash
-conda create -n physx-anything python=3.10
-conda activate physx-anything
+# Python 微服务
+cd current-inference
 pip install -r requirements.txt
+uvicorn main:app --reload
 ```
 
-### Training
+---
 
-1. Download PhysX datasets from [PhysXNet](https://huggingface.co/datasets/Caoza/PhysX-3D) and [PhysX-Mobility](https://huggingface.co/datasets/Caoza/PhysX-Mobility)
+## 📋 开发路线图
 
-2. Run the preprocessing script. 
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| Phase 1 | 基础框架搭建（Next.js + Supabase + 认证） | 🔄 进行中 |
+| Phase 2 | 3D 资产库 + 云端推理集成 | ⏳ 待开始 |
+| Phase 3 | 2D 地图编辑器 | ⏳ 待开始 |
+| Phase 4 | 路径规划与仿真引擎 | ⏳ 待开始 |
+| Phase 5 | 集成与优化 | ⏳ 待开始 |
 
-   ```python
-   cd dataset
-   python 1voxel.py
-   python 2encode_representation_32_finetune.py
-   python 3generate_data_new_32_finetune.py
-   ```
+---
 
-   **Note**: Here is a template for you to check the format: [template](https://github.com/ziangcao0312/PhysX-Anything/blob/main/dataset/training_data_template.json).
+## 📄 许可证
 
-3. Render the conditioning images (25 images per object) based on your requirements. 
-
-   For PhysX-Mobility, we use [dataset_toolkits/render_cond_mobility.py](https://github.com/ziangcao0312/PhysX-Anything/tree/main/dataset_toolits) to generate the conditioning images. 
-
-   For PhysXNet, please check [PhysX-3D/dataset_toolkits/precess.sh](https://github.com/ziangcao0312/PhysX-3D/blob/main/dataset_toolkits/precess.sh)
-
-4. Set the path in train [configuration](https://github.com/ziangcao0312/PhysX-Anything/blob/main/qwen-vl-finetune/qwenvl/data/__init__.py)
-
-   ```python
-   PHYSXNET = {
-       "annotation_path": "xx", #json file path
-       "data_path": "xx",  # conditioning image path
-   }
-   
-   PHYSXMOBILITY = {
-       "annotation_path": "xx", #json file path
-       "data_path": "xx",  # conditioning image path
-   }
-   ```
-
-5. Finetune the model
-
-   ```
-   cd qwen-vl-finetune
-   sbatch scripts/sft_7b.sh
-   ```
-
-### Inference
-
-1. Download the pre-train model from [huggingface_v2](https://huggingface.co/Caoza/PhysX-Anything).
-
-```bash
-python download.py
-```
-
-2. Run the inference code
-
-```bash
-python 1_vlm_demo.py            # vlm inference
-    --demo_path ./demo          # inputted image path
-    --save_part_ply True        # save the geometry of parts 
-    --remove_bg False           # Set this to false for RGBA images and true otherwise.
-    --ckpt ./pretrain/vlm       # ckpt path
-    
-python 2_decoder.py             # decoder inference
-
-python 3_split.py               # split the mesh
-
-python 4_simready_gen.py        # convert to URDF & XML
-    --voxel_define 32           # voxel resolution
-    --basepath ./test_demo      # results path
-    --process 0                 # use postprocess
-    --fixed_base 0              # fix the basement of object or not
-    --deformable 0              # introduce deformable parts or not
-```
-
-**Note**: Although our method can generate parts with physical deformable parameters, the deformable components are not stable in MuJoCo. Therefore, we recommend setting the deformable flag to 0 to obtain more reliable simulation results.
-
-### Evaluation
-
-1. Render the generated URDF files
-
-```bash
-python render_urdf.py
-```
-
-2. Run the VLM-based evaluations.
-
-```bash
-python evaluation_kine.py
-```
-
-3. For all other physical attributes, please run the script.
-
-```bash
-python evaluation_phy.py
-```
-
-
-
-## PhysX-Mobility
-
-For more details about our proposed dataset including dataset structure and annotation, please see this [PhysX-Mobility](https://huggingface.co/datasets/Caoza/PhysX-Mobility) and [PhysXNet](https://huggingface.co/datasets/Caoza/PhysX-3D).
-
-## References
-
-If you find PhysX-Anything and PhysX-3D useful for your work, please cite:
-
-```
-@article{physxanything,
-  title={PhysX-Anything: Simulation-Ready Physical 3D Assets from Single Image},
-  author={Cao, Ziang and Hong, Fangzhou and Chen, Zhaoxi and Pan, Liang and Liu, Ziwei},
-  journal={arXiv preprint arXiv:2511.13648},
-  year={2025}
-}
-
-@article{physx3d,
-  title={PhysX-3D: Physical-Grounded 3D Asset Generation},
-  author={Cao, Ziang and Chen, Zhaoxi and Pan, Liang and Liu, Ziwei},
-  journal={arXiv preprint arXiv:2507.12465},
-  year={2025}
-}
-```
-
-### Acknowledgement
-
-The data and code is based on [PartNet-mobility](https://sapien.ucsd.edu/browse), [Qwen](https://github.com/QwenLM/Qwen3-VL) and [TRELLIS](https://github.com/microsoft/TRELLIS). We would like to express our sincere thanks to the contributors.
-
-## :newspaper_roll: License
-
-Distributed under the S-Lab License. See `LICENSE` for more information.
-
-<div align="center">
-  <a href="https://info.flagcounter.com/x0BB"><img src="https://s01.flagcounter.com/map/x0BB/size_s/txt_000000/border_CCCCCC/pageviews_0/viewers_0/flags_0/" alt="Flag Counter" border="0"></a>
-</div>
+基于 [PhysX-Anything](https://github.com/ziangcao0312/PhysX-Anything) (S-Lab License) 改造。
