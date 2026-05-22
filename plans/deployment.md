@@ -105,8 +105,8 @@ git push -u origin main
 
 1. Settings → API
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
-   - anon public key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - service_role key → `SUPABASE_SERVICE_ROLE_KEY`（⚠️ 保密！）
+   - anon public key → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - service_role key → `SUPABASE_SECRET_KEY`（⚠️ 保密！）
 
 ---
 
@@ -130,8 +130,8 @@ git push -u origin main
 | 变量名 | 值 | 环境 |
 |--------|-----|------|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://xxx.supabase.co` | Production, Preview, Development |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJ...` | Production, Preview, Development |
-| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Production only |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `eyJ...` | Production, Preview, Development |
+| `SUPABASE_SECRET_KEY` | `eyJ...` | Production only |
 | `MINIMAX_API_KEY` | 你的 MiniMax API Key | Production only |
 | `TRIPO_API_KEY` | 你的 Tripo3D API Key | Production only |
 | `INFERENCE_SERVICE_URL` | `https://your-railway-app.up.railway.app` | Production, Preview |
@@ -167,7 +167,7 @@ git push -u origin main
 | 变量名 | 值 |
 |--------|-----|
 | `SUPABASE_URL` | `https://xxx.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` |
+| `SUPABASE_SECRET_KEY` | `eyJ...` |
 | `PORT` | `8000` |
 
 ### 4.3 获取服务 URL
@@ -261,8 +261,8 @@ const nextConfig: NextConfig = {
 | 变量 | 来源 | 必须 |
 |------|------|------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase Settings → API | ✅ |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Settings → API | ✅ |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Settings → API | ✅ |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase Settings → API | ✅ |
+| `SUPABASE_SECRET_KEY` | Supabase Settings → API | ✅ |
 | `MINIMAX_API_KEY` | [platform.minimax.chat](https://platform.minimax.chat) | ✅ |
 | `TRIPO_API_KEY` | [platform.tripo3d.ai](https://platform.tripo3d.ai) | ✅ |
 | `INFERENCE_SERVICE_URL` | Railway 部署后的 URL | ✅ |
@@ -272,7 +272,7 @@ const nextConfig: NextConfig = {
 | 变量 | 来源 | 必须 |
 |------|------|------|
 | `SUPABASE_URL` | Supabase Settings → API | ✅ |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Settings → API | ✅ |
+| `SUPABASE_SECRET_KEY` | Supabase Settings → API | ✅ |
 | `PORT` | 固定 `8000` | ✅ |
 
 ---

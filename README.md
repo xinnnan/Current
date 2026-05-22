@@ -155,8 +155,8 @@ Current/
 ```bash
 # current-web/.env.local
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+SUPABASE_SECRET_KEY=your-service-role-key
 MINIMAX_API_KEY=your-minimax-api-key
 TRIPO_API_KEY=your-tripo-api-key
 INFERENCE_SERVICE_URL=http://localhost:8000
@@ -316,8 +316,8 @@ Original PhysX-Anything code is subject to S-Lab License 1.0 (non-commercial). C
 ```bash
 # current-web/.env.local
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-anon-key
+SUPABASE_SECRET_KEY=your-service-role-key
 MINIMAX_API_KEY=your-minimax-api-key
 TRIPO_API_KEY=your-tripo-api-key
 INFERENCE_SERVICE_URL=http://localhost:8000
