@@ -19,6 +19,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { useTranslation } from '@/lib/i18n'
 import { LanguageSwitcher } from '@/components/shared/language-switcher'
+import { useProjectStore } from '@/lib/project-store'
 
 const NAV_KEYS = [
   { href: '/', icon: LayoutDashboard, labelKey: 'nav.overview', exact: true },
@@ -34,6 +35,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const { t } = useTranslation()
+  const { currentProjectName } = useProjectStore()
 
   useEffect(() => {
     const supabase = createClient()
@@ -80,6 +82,14 @@ export function Sidebar() {
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       </div>
+
+      {/* Current Project */}
+      {!collapsed && currentProjectName && (
+        <div className="px-3 py-2 border-b border-sidebar-border bg-accent/5">
+          <div className="text-[10px] text-muted uppercase tracking-wider">Project</div>
+          <div className="text-xs font-medium text-foreground truncate">{currentProjectName}</div>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 py-1.5" role="list">

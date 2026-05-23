@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Box, Map, Play, ArrowRight, FolderOpen, Layers, Truck, BarChart3, X, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslation } from '@/lib/i18n'
+import { useProjectStore } from '@/lib/project-store'
 
 interface Project {
   id: string
@@ -14,6 +15,7 @@ interface Project {
 
 export function HomeContent() {
   const { t } = useTranslation()
+  const { setCurrentProject } = useProjectStore()
   const [projects, setProjects] = useState<Project[]>([])
   const [showNewProject, setShowNewProject] = useState(false)
   const [projectName, setProjectName] = useState('')
@@ -181,6 +183,7 @@ export function HomeContent() {
                 <Link
                   key={project.id}
                   href={`/map?project=${project.id}`}
+                  onClick={() => setCurrentProject(project.id, project.name)}
                   className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors duration-[var(--transition-fast)]"
                 >
                   <div className="flex items-center gap-3">
