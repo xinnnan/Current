@@ -535,6 +535,13 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       canvas.renderAll()
       setHasContent(true)
 
+      // Notify parent for persistence (upload to Storage)
+      onToolActionRef.current?.('base_image_imported', {
+        file,
+        width: img.width,
+        height: img.height,
+      })
+
       // Clean up object URL if we created one
       if (!isPdfFile(file)) {
         URL.revokeObjectURL(imageUrl)
@@ -581,6 +588,10 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     }
     canvas.renderAll()
     setHasContent(true)
+
+    // Notify parent for persistence
+    const nodeId = `node_${Date.now()}`
+    onToolActionRef.current?.('node_added', { id: nodeId, x, y, label })
   }, [])
 
   // ── Add route line between two points ──
@@ -595,6 +606,17 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     })
     canvas.add(line)
     canvas.renderAll()
+
+    // Notify parent for persistence
+    const dx = x2 - x1
+    const dy = y2 - y1
+    const length = Math.sqrt(dx * dx + dy * dy)
+    onToolActionRef.current?.('edge_added', {
+      id: `edge_${Date.now()}`,
+      fromX: x1, fromY: y1,
+      toX: x2, toY: y2,
+      length,
+    })
   }, [])
 
   // ── Add obstacle polygon ──
@@ -614,6 +636,9 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     )
     canvas.add(polygon)
     canvas.renderAll()
+
+    // Notify parent for persistence
+    onToolActionRef.current?.('zone_added', { points })
   }, [])
 
   // ── Place asset on canvas ──
