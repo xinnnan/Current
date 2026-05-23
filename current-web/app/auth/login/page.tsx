@@ -6,38 +6,30 @@ import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { LanguageSwitcher } from '@/components/shared/language-switcher'
+import Image from 'next/image'
 
 function LoginForm() {
-  const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectPath = searchParams.get('redirect') || '/'
   const { t } = useTranslation()
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    setMessage(null)
 
     try {
       const supabase = createClient()
-      if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
-        router.push(redirectPath)
-        router.refresh()
-      } else {
-        const { error } = await supabase.auth.signUp({ email, password })
-        if (error) throw error
-        setMessage(t('auth.registerSuccess'))
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
+      router.push(redirectPath)
+      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : t('auth.operationFailed'))
     } finally {
@@ -55,30 +47,28 @@ function LoginForm() {
 
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-[var(--radius-xl)] mb-3">
-            <span className="text-xl font-bold text-accent">C</span>
+          <div className="inline-flex items-center justify-center mb-3">
+            <Image
+              src="/logo.png"
+              alt="Current"
+              width={56}
+              height={56}
+              className="rounded-[var(--radius-xl)]"
+              priority
+            />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Current</h1>
           <p className="text-sm text-muted mt-1">{t('auth.subtitle')}</p>
         </div>
 
-        {/* Auth Form */}
-        <form onSubmit={handleAuth} className="bg-panel-bg border border-panel-border rounded-[var(--radius-xl)] p-6 shadow-md space-y-4">
-          <h2 className="text-lg font-medium text-center">
-            {isLogin ? t('auth.login') : t('auth.register')}
-          </h2>
+        {/* Login Form */}
+        <form onSubmit={handleLogin} className="bg-panel-bg border border-panel-border rounded-[var(--radius-xl)] p-6 shadow-md space-y-4">
+          <h2 className="text-lg font-medium text-center">{t('auth.login')}</h2>
 
           {error && (
             <div className="p-3 bg-danger-light text-danger text-sm rounded-[var(--radius-md)] flex items-start gap-2">
               <span className="shrink-0 mt-0.5">⚠</span>
               <span>{error}</span>
-            </div>
-          )}
-
-          {message && (
-            <div className="p-3 bg-success-light text-success text-sm rounded-[var(--radius-md)] flex items-start gap-2">
-              <span className="shrink-0 mt-0.5">✓</span>
-              <span>{message}</span>
             </div>
           )}
 
@@ -127,22 +117,12 @@ function LoginForm() {
             {loading ? (
               <>
                 <Loader2 size={14} className="spinner" />
-                {isLogin ? t('auth.loggingIn') : t('auth.registering')}
+                {t('auth.loggingIn')}
               </>
             ) : (
-              isLogin ? t('auth.login') : t('auth.register')
+              t('auth.login')
             )}
           </button>
-
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => { setIsLogin(!isLogin); setError(null); setMessage(null) }}
-              className="text-xs text-muted hover:text-accent transition-colors"
-            >
-              {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
-            </button>
-          </div>
         </form>
 
         <p className="text-[10px] text-center text-muted-foreground mt-4">

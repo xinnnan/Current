@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard,
@@ -61,9 +62,14 @@ export function Sidebar() {
     >
       {/* Logo */}
       <div className="h-12 flex items-center justify-between px-3 border-b border-sidebar-border">
-        {!collapsed && (
-          <Link href="/" className="text-base font-semibold tracking-tight">
-            Current
+        {!collapsed ? (
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/logo.png" alt="Current" width={24} height={24} className="rounded" />
+            <span className="text-base font-semibold tracking-tight">Current</span>
+          </Link>
+        ) : (
+          <Link href="/" className="mx-auto">
+            <Image src="/logo.png" alt="Current" width={24} height={24} className="rounded" />
           </Link>
         )}
         <button
