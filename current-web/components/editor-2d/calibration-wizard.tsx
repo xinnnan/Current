@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { Ruler, Check, X, RotateCcw } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { useUnitStore } from '@/lib/units/store'
-import { distanceLabel, displayToMeters, metersToDisplay } from '@/lib/units'
+import { metersToDisplay, displayToMeters, distanceLabel } from '@/lib/units'
 
 export interface CalibrationData {
   pointA: { x: number; y: number } | null
@@ -12,6 +12,35 @@ export interface CalibrationData {
   pixelDistance: number
   realDistanceM: number
   pixelsPerMeter: number
+}
+
+type CalibUnit = 'm' | 'cm' | 'ft' | 'in'
+
+const CALIB_UNITS: { value: CalibUnit; label: string }[] = [
+  { value: 'm', label: 'm' },
+  { value: 'cm', label: 'cm' },
+  { value: 'ft', label: 'ft' },
+  { value: 'in', label: 'in' },
+]
+
+// Convert from a calibration unit to meters
+function calibUnitToMeters(value: number, unit: CalibUnit): number {
+  switch (unit) {
+    case 'cm': return value / 100
+    case 'ft': return value / 3.28084
+    case 'in': return value / 39.37008
+    default: return value // m
+  }
+}
+
+// Convert from meters to display value in calibration unit
+function metersToCalibUnit(valueM: number, unit: CalibUnit): number {
+  switch (unit) {
+    case 'cm': return valueM * 100
+    case 'ft': return valueM * 3.28084
+    case 'in': return valueM * 39.37008
+    default: return valueM // m
+  }
 }
 
 interface CalibrationWizardProps {
@@ -31,20 +60,29 @@ export function CalibrationWizard({
 }: CalibrationWizardProps) {
   const [step, setStep] = useState<WizardStep>('idle')
   const [realDistance, setRealDistance] = useState('')
+  const [calibUnit, setCalibUnit] = useState<CalibUnit>('m')
   const [tempPointA, setTempPointA] = useState<{ x: number; y: number } | null>(null)
   const [tempPointB, setTempPointB] = useState<{ x: number; y: number } | null>(null)
   const { t } = useTranslation()
   const { unitSystem } = useUnitStore()
 
-  const unitLbl = distanceLabel(unitSystem)
+  // Default calibration unit based on user's unit system preference
+  const getDefaultUnit = (): CalibUnit => {
+    switch (unitSystem) {
+      case 'imperial': return 'ft'
+      case 'us_customary': return 'in'
+      default: return 'm'
+    }
+  }
 
   const startCalibration = useCallback(() => {
     setStep('draw_line')
     setTempPointA(null)
     setTempPointB(null)
     setRealDistance('')
+    setCalibUnit(getDefaultUnit())
     onCalibrationModeChange(true)
-  }, [onCalibrationModeChange])
+  }, [onCalibrationModeChange]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cancelCalibration = useCallback(() => {
     setStep('idle')
@@ -78,8 +116,8 @@ export function CalibrationWizard({
 
     if (pixelDist <= 0 || displayDist <= 0) return
 
-    // Convert user input from display units → meters
-    const realDistM = displayToMeters(displayDist, unitSystem)
+    // Convert user input from selected unit → meters
+    const realDistM = calibUnitToMeters(displayDist, calibUnit)
 
     onCalibrationChange({
       pointA: tempPointA,
@@ -90,7 +128,7 @@ export function CalibrationWizard({
     })
     setStep('completed')
     onCalibrationModeChange(false)
-  }, [tempPointA, tempPointB, realDistance, unitSystem, onCalibrationChange, onCalibrationModeChange])
+  }, [tempPointA, tempPointB, realDistance, calibUnit, onCalibrationChange, onCalibrationModeChange])
 
   const pixelDistance = (() => {
     if (!tempPointA || !tempPointB) return 0
@@ -128,7 +166,7 @@ export function CalibrationWizard({
               {t('calibration.calibrated')}
             </div>
             <div className="space-y-1 text-xs text-green-600">
-              <div>{t('calibration.realDistance')}: {metersToDisplay(calibration.realDistanceM, unitSystem).toFixed(2)} {unitLbl}</div>
+              <div>{t('calibration.realDistance')}: {metersToDisplay(calibration.realDistanceM, unitSystem).toFixed(2)} {distanceLabel(unitSystem)}</div>
               <div>{t('calibration.pixelDistance')}: {Math.round(calibration.pixelDistance)} px</div>
               <div className="font-medium">
                 {t('calibration.scale')}: {calibration.pixelsPerMeter.toFixed(2)} px/m
@@ -181,7 +219,16 @@ export function CalibrationWizard({
                 className="flex-1 px-2 py-1.5 text-xs border border-blue-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-accent"
                 autoFocus
               />
-              <span className="text-xs text-blue-600">{unitLbl}</span>
+              <select
+                value={calibUnit}
+                onChange={(e) => setCalibUnit(e.target.value as CalibUnit)}
+                className="px-2 py-1.5 text-xs border border-blue-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-accent"
+                aria-label={t('calibration.unit')}
+              >
+                {CALIB_UNITS.map(u => (
+                  <option key={u.value} value={u.value}>{u.label}</option>
+                ))}
+              </select>
             </div>
             <div className="flex gap-2">
               <button

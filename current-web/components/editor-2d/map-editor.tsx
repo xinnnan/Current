@@ -85,6 +85,8 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
 
   // Calibration drawing state
   const calibPointA = useRef<{ x: number; y: number } | null>(null)
+  const calibPreviewLine = useRef<Line | null>(null)
+  const calibCursorCircle = useRef<Circle | null>(null)
 
   // Line drawing state
   const lineStartPoint = useRef<{ x: number; y: number } | null>(null)
@@ -173,6 +175,12 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
           canvas.add(markerA)
           canvas.renderAll()
         } else {
+          // Remove preview line before adding final line
+          if (calibPreviewLine.current) {
+            canvas.remove(calibPreviewLine.current)
+            calibPreviewLine.current = null
+          }
+
           const markerB = new Circle({
             left: pointer.x - 6,
             top: pointer.y - 6,
@@ -279,18 +287,74 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       }
     })
 
-    // ── Mouse move: pan dragging ──
+    // ── Mouse move: pan dragging + calibration preview ──
     canvas.on('mouse:move', (opt) => {
-      if (!isDragging.current) return
-      const e = opt.e as MouseEvent
-      const vpt = canvas.viewportTransform
-      if (vpt) {
-        vpt[4] += e.clientX - lastPosX.current
-        vpt[5] += e.clientY - lastPosY.current
+      const tool = getEffectiveTool()
+      const pointer = canvas.getScenePoint(opt.e)
+
+      // Pan dragging
+      if (isDragging.current) {
+        const e = opt.e as MouseEvent
+        const vpt = canvas.viewportTransform
+        if (vpt) {
+          vpt[4] += e.clientX - lastPosX.current
+          vpt[5] += e.clientY - lastPosY.current
+        }
+        lastPosX.current = e.clientX
+        lastPosY.current = e.clientY
+        canvas.requestRenderAll()
+        return
       }
-      lastPosX.current = e.clientX
-      lastPosY.current = e.clientY
-      canvas.requestRenderAll()
+
+      // Calibration: precision circle cursor
+      if (tool === 'calibrate') {
+        if (calibCursorCircle.current) {
+          calibCursorCircle.current.set({ left: pointer.x - 10, top: pointer.y - 10 })
+        } else {
+          calibCursorCircle.current = new Circle({
+            left: pointer.x - 10,
+            top: pointer.y - 10,
+            radius: 10,
+            fill: 'transparent',
+            stroke: 'rgba(234, 179, 8, 0.6)',
+            strokeWidth: 1.5,
+            strokeDashArray: [4, 3],
+            selectable: false,
+            evented: false,
+          })
+          canvas.add(calibCursorCircle.current)
+        }
+
+        // Calibration: preview line from start point to cursor
+        if (calibPointA.current) {
+          if (calibPreviewLine.current) {
+            calibPreviewLine.current.set({ x1: calibPointA.current.x, y1: calibPointA.current.y, x2: pointer.x, y2: pointer.y })
+          } else {
+            calibPreviewLine.current = new Line(
+              [calibPointA.current.x, calibPointA.current.y, pointer.x, pointer.y],
+              {
+                stroke: '#ca8a04',
+                strokeWidth: 2,
+                strokeDashArray: [8, 4],
+                selectable: false,
+                evented: false,
+              }
+            )
+            canvas.add(calibPreviewLine.current)
+          }
+        }
+        canvas.requestRenderAll()
+      } else {
+        // Remove calibration cursor objects when not in calibrate mode
+        if (calibCursorCircle.current) {
+          canvas.remove(calibCursorCircle.current)
+          calibCursorCircle.current = null
+        }
+        if (calibPreviewLine.current) {
+          canvas.remove(calibPreviewLine.current)
+          calibPreviewLine.current = null
+        }
+      }
     })
 
     // ── Mouse up: stop panning ──
@@ -359,13 +423,33 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     const tool = externalTool ?? 'select'
     activeToolRef.current = tool
     canvas.selection = tool === 'select'
-    canvas.defaultCursor = tool === 'pan' ? 'grab' : 'default'
-    canvas.hoverCursor = tool === 'pan' ? 'grab' : 'move'
+
+    // Set cursor based on tool
+    if (tool === 'pan') {
+      canvas.defaultCursor = 'grab'
+      canvas.hoverCursor = 'grab'
+    } else if (tool === 'calibrate' || tool === 'node' || tool === 'line' || tool === 'polygon' || tool === 'place_asset') {
+      canvas.defaultCursor = 'crosshair'
+      canvas.hoverCursor = 'crosshair'
+    } else {
+      canvas.defaultCursor = 'default'
+      canvas.hoverCursor = 'move'
+    }
 
     // Reset drawing states
     lineStartPoint.current = null
     calibPointA.current = null
     polygonPoints.current = []
+
+    // Clean up calibration cursor objects
+    if (calibCursorCircle.current) {
+      canvas.remove(calibCursorCircle.current)
+      calibCursorCircle.current = null
+    }
+    if (calibPreviewLine.current) {
+      canvas.remove(calibPreviewLine.current)
+      calibPreviewLine.current = null
+    }
 
     canvas.renderAll()
   }, [externalTool])
