@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardR
 import { Canvas, Circle, Line, Polygon, Group, Text, Image as FabricImage, Point, Rect } from 'fabric'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 
-// Configure PDF.js worker
+// Configure PDF.js worker (client-side only)
 if (typeof window !== 'undefined') {
   GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs`
 }
@@ -61,14 +61,27 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fabricRef = useRef<Canvas | null>(null)
-  const [activeTool, setActiveTool] = useState<EditorTool>(externalTool ?? 'select')
   const [zoom, setZoom] = useState(1)
   const [hasContent, setHasContent] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  // ── Refs for values accessed inside stale closures ──
+  const activeToolRef = useRef<EditorTool>(externalTool ?? 'select')
+  const pendingAssetRef = useRef(pendingAsset)
+  const onToolActionRef = useRef(onToolAction)
+
+  // Keep refs in sync with props/state
+  useEffect(() => { activeToolRef.current = externalTool ?? 'select' }, [externalTool])
+  useEffect(() => { pendingAssetRef.current = pendingAsset }, [pendingAsset])
+  useEffect(() => { onToolActionRef.current = onToolAction }, [onToolAction])
 
   // Pan state
   const isDragging = useRef(false)
   const lastPosX = useRef(0)
   const lastPosY = useRef(0)
+
+  // Space key held → force pan mode
+  const spaceHeld = useRef(false)
 
   // Calibration drawing state
   const calibPointA = useRef<{ x: number; y: number } | null>(null)
@@ -83,19 +96,21 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
   const placedAssetsRef = useRef<PlacedAsset[]>([])
   const assetCounterRef = useRef(0)
 
-  // Sync external tool
-  useEffect(() => {
-    if (externalTool) setActiveTool(externalTool)
-  }, [externalTool])
-
   // Expose ref methods
   useImperativeHandle(ref, () => ({
     importFile: handleFileImport,
     getCanvas: () => fabricRef.current,
     getPlacedAssets: () => [...placedAssetsRef.current],
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [])
 
-  // Initialize Fabric.js canvas
+  // ── Helper: get effective tool (Space overrides) ──
+  const getEffectiveTool = useCallback((): EditorTool => {
+    if (spaceHeld.current) return 'pan'
+    return activeToolRef.current
+  }, [])
+
+  // ── Initialize Fabric.js canvas ──
   useEffect(() => {
     if (!canvasRef.current) return
 
@@ -106,7 +121,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       selection: true,
     })
 
-    // Zoom with mouse wheel
+    // ── Zoom with mouse wheel ──
     canvas.on('mouse:wheel', (opt) => {
       const delta = (opt.e as WheelEvent).deltaY
       let newZoom = (canvas.getZoom() || 1) * (0.999 ** delta)
@@ -120,10 +135,14 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       canvas.renderAll()
     })
 
-    // Handle canvas clicks for drawing tools
+    // ── Mouse down: handle all tools ──
     canvas.on('mouse:down', (opt) => {
-      if (activeTool === 'pan') {
+      const tool = getEffectiveTool()
+
+      // Pan mode (explicit or Space-held)
+      if (tool === 'pan') {
         isDragging.current = true
+        canvas.defaultCursor = 'grabbing'
         lastPosX.current = (opt.e as MouseEvent).clientX
         lastPosY.current = (opt.e as MouseEvent).clientY
         return
@@ -131,15 +150,16 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
 
       const pointer = canvas.getScenePoint(opt.e)
 
-      if (activeTool === 'node') {
+      // Node tool
+      if (tool === 'node') {
         addNode(pointer.x, pointer.y)
         return
       }
 
-      if (activeTool === 'calibrate') {
+      // Calibrate tool
+      if (tool === 'calibrate') {
         if (!calibPointA.current) {
           calibPointA.current = { x: pointer.x, y: pointer.y }
-          // Draw calibration marker A
           const markerA = new Circle({
             left: pointer.x - 6,
             top: pointer.y - 6,
@@ -153,7 +173,6 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
           canvas.add(markerA)
           canvas.renderAll()
         } else {
-          // Draw calibration marker B and line
           const markerB = new Circle({
             left: pointer.x - 6,
             top: pointer.y - 6,
@@ -177,8 +196,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
           canvas.add(calibLine, markerB)
           canvas.renderAll()
 
-          // Notify parent
-          onToolAction?.('calibration_points', {
+          onToolActionRef.current?.('calibration_points', {
             pointA: calibPointA.current,
             pointB: { x: pointer.x, y: pointer.y },
           })
@@ -187,10 +205,10 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
         return
       }
 
-      if (activeTool === 'line') {
+      // Line tool
+      if (tool === 'line') {
         if (!lineStartPoint.current) {
           lineStartPoint.current = { x: pointer.x, y: pointer.y }
-          // Draw start marker
           const startMarker = new Circle({
             left: pointer.x - 4,
             top: pointer.y - 4,
@@ -213,9 +231,9 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
         return
       }
 
-      if (activeTool === 'polygon') {
+      // Polygon tool
+      if (tool === 'polygon') {
         polygonPoints.current.push({ x: pointer.x, y: pointer.y })
-        // Draw vertex marker
         const vertex = new Circle({
           left: pointer.x - 3,
           top: pointer.y - 3,
@@ -227,7 +245,6 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
         canvas.add(vertex)
         canvas.renderAll()
 
-        // If 3+ points and double-click-like (close enough to first point)
         if (polygonPoints.current.length >= 3) {
           const first = polygonPoints.current[0]
           const dist = Math.sqrt(
@@ -242,16 +259,16 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       }
 
       // Place asset tool
-      if (activeTool === 'place_asset' && pendingAsset) {
-        placeAssetOnCanvas(pointer.x, pointer.y, pendingAsset)
+      if (tool === 'place_asset' && pendingAssetRef.current) {
+        placeAssetOnCanvas(pointer.x, pointer.y, pendingAssetRef.current)
         return
       }
 
-      // Select tool - check if object clicked
-      if (activeTool === 'select') {
+      // Select tool — check if object clicked
+      if (tool === 'select') {
         const target = canvas.findTarget(opt.e as MouseEvent)
         if (target) {
-          onToolAction?.('select_element', {
+          onToolActionRef.current?.('select_element', {
             type: target instanceof Circle ? 'node' :
                   target instanceof Line ? 'edge' :
                   target instanceof Polygon ? 'zone' : 'unknown',
@@ -262,7 +279,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       }
     })
 
-    // Pan handling
+    // ── Mouse move: pan dragging ──
     canvas.on('mouse:move', (opt) => {
       if (!isDragging.current) return
       const e = opt.e as MouseEvent
@@ -276,13 +293,19 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       canvas.requestRenderAll()
     })
 
+    // ── Mouse up: stop panning ──
     canvas.on('mouse:up', () => {
-      isDragging.current = false
+      if (isDragging.current) {
+        isDragging.current = false
+        // Restore cursor based on current tool
+        const tool = getEffectiveTool()
+        canvas.defaultCursor = tool === 'pan' ? 'grab' : 'default'
+      }
     })
 
     fabricRef.current = canvas
 
-    // Resize handler
+    // ── Resize handler ──
     const handleResize = () => {
       const parent = canvasRef.current?.parentElement
       if (parent) {
@@ -302,14 +325,42 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Tool switching
+  // ── Space key → temporary pan override ──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault()
+        spaceHeld.current = true
+        const canvas = fabricRef.current
+        if (canvas) canvas.defaultCursor = 'grab'
+      }
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceHeld.current = false
+        isDragging.current = false
+        const canvas = fabricRef.current
+        if (canvas) canvas.defaultCursor = activeToolRef.current === 'pan' ? 'grab' : 'default'
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [])
+
+  // ── Tool switching: update cursor + reset drawing states ──
   useEffect(() => {
     const canvas = fabricRef.current
     if (!canvas) return
 
-    canvas.selection = activeTool === 'select'
-    canvas.defaultCursor = activeTool === 'pan' ? 'grab' : 'default'
-    canvas.hoverCursor = activeTool === 'pan' ? 'grab' : 'move'
+    const tool = externalTool ?? 'select'
+    activeToolRef.current = tool
+    canvas.selection = tool === 'select'
+    canvas.defaultCursor = tool === 'pan' ? 'grab' : 'default'
+    canvas.hoverCursor = tool === 'pan' ? 'grab' : 'move'
 
     // Reset drawing states
     lineStartPoint.current = null
@@ -317,15 +368,15 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     polygonPoints.current = []
 
     canvas.renderAll()
-  }, [activeTool])
+  }, [externalTool])
 
-  // Render PDF first page to a data URL (PNG)
+  // ── Render PDF first page to a data URL (PNG) ──
   const renderPdfToDataUrl = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer()
-    const pdf = await getDocument({ data: arrayBuffer }).promise
+    const pdf = await getDocument({ data: new Uint8Array(arrayBuffer) }).promise
     const page = await pdf.getPage(1)
 
-    // Use a scale that gives good resolution (2x for clarity)
+    // Render at 2x scale for clarity
     const viewport = page.getViewport({ scale: 2 })
     const offscreen = document.createElement('canvas')
     offscreen.width = viewport.width
@@ -336,15 +387,24 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     return offscreen.toDataURL('image/png')
   }
 
-  // Import base image (supports JPEG/PNG/WebP + PDF)
+  // ── Check if file is a PDF (by MIME type or extension) ──
+  const isPdfFile = (file: File): boolean => {
+    if (file.type === 'application/pdf') return true
+    // Fallback: check file extension
+    return file.name.toLowerCase().endsWith('.pdf')
+  }
+
+  // ── Import base image (supports JPEG/PNG/WebP + PDF) ──
   const importBaseImage = useCallback(async (file: File) => {
     const canvas = fabricRef.current
     if (!canvas) return
 
+    setImportError(null)
+
     try {
       let imageUrl: string
 
-      if (file.type === 'application/pdf') {
+      if (isPdfFile(file)) {
         // Render PDF first page to image
         imageUrl = await renderPdfToDataUrl(file)
       } else {
@@ -375,15 +435,18 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       setHasContent(true)
 
       // Clean up object URL if we created one
-      if (file.type !== 'application/pdf') {
+      if (!isPdfFile(file)) {
         URL.revokeObjectURL(imageUrl)
       }
     } catch (err) {
       console.error('Failed to import file:', err)
+      setImportError(err instanceof Error ? err.message : 'Import failed')
+      // Auto-dismiss error after 5s
+      setTimeout(() => setImportError(null), 5000)
     }
   }, [])
 
-  // Add route node
+  // ── Add route node ──
   const addNode = useCallback((x: number, y: number, label?: string) => {
     const canvas = fabricRef.current
     if (!canvas) return
@@ -419,7 +482,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     setHasContent(true)
   }, [])
 
-  // Add route line between two points
+  // ── Add route line between two points ──
   const addRouteLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
     const canvas = fabricRef.current
     if (!canvas) return
@@ -433,7 +496,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     canvas.renderAll()
   }, [])
 
-  // Add obstacle polygon
+  // ── Add obstacle polygon ──
   const addObstacleZone = useCallback((points: { x: number; y: number }[]) => {
     const canvas = fabricRef.current
     if (!canvas || points.length < 3) return
@@ -452,7 +515,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     canvas.renderAll()
   }, [])
 
-  // Place asset on canvas
+  // ── Place asset on canvas ──
   const placeAssetOnCanvas = useCallback((
     x: number,
     y: number,
@@ -465,12 +528,10 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     const assetInstanceId = `asset_inst_${assetCounterRef.current}`
     const color = ASSET_COLORS[asset.category] || ASSET_COLORS.other
 
-    // Default size: 40x30 pixels if no dimensions, otherwise scale to reasonable canvas size
     const defaultPx = 40
     const w = asset.dimension_length ? asset.dimension_length * 20 : defaultPx
     const h = asset.dimension_width ? asset.dimension_width * 20 : defaultPx * 0.75
 
-    // Create asset rectangle
     const rect = new Rect({
       left: x - w / 2,
       top: y - h / 2,
@@ -484,7 +545,6 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       selectable: true,
     })
 
-    // Create label
     const label = new Text(asset.name, {
       left: x,
       top: y + h / 2 + 4,
@@ -495,12 +555,10 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       evented: false,
     })
 
-    // Group them
     const group = new Group([rect, label], {
       left: x - w / 2,
       top: y - h / 2,
     })
-    // Store asset metadata on the group
     const groupAny = group as unknown as Record<string, unknown>
     groupAny._assetInstanceId = assetInstanceId
     groupAny._assetId = asset.id
@@ -510,7 +568,6 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     canvas.renderAll()
     setHasContent(true)
 
-    // Track placed asset
     const placed: PlacedAsset = {
       id: assetInstanceId,
       assetId: asset.id,
@@ -524,11 +581,10 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     }
     placedAssetsRef.current.push(placed)
 
-    // Notify parent
-    onToolAction?.('asset_placed', { ...placed })
-  }, [onToolAction])
+    onToolActionRef.current?.('asset_placed', { ...placed })
+  }, [])
 
-  // Zoom controls
+  // ── Zoom controls ──
   const handleZoomIn = () => {
     const canvas = fabricRef.current
     if (!canvas) return
@@ -555,7 +611,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     canvas.renderAll()
   }
 
-  // Handle file import
+  // ── Handle file import ──
   const handleFileImport = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -593,19 +649,23 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
         </button>
       </div>
 
+      {/* Import error toast */}
+      {importError && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg shadow-md max-w-sm">
+          Import failed: {importError}
+        </div>
+      )}
+
       {/* Empty state overlay */}
       {!hasContent && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="text-center text-muted pointer-events-auto">
             <button
               onClick={handleFileImport}
-              className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm hover:bg-gray-50 shadow-sm"
+              className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:bg-accent-hover transition-colors"
             >
-              导入底图文件
+              Import Base Map
             </button>
-            <p className="text-xs mt-2 text-gray-400">
-              支持 DXF、PDF、JPEG、PNG 格式
-            </p>
           </div>
         </div>
       )}
