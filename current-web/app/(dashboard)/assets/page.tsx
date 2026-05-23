@@ -1,11 +1,71 @@
 'use client'
 
-import { Upload, Search, Box, Download } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Upload, Search, Box, Download, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import { ModelViewer } from '@/components/viewer-3d/model-viewer'
 import { useTranslation } from '@/lib/i18n'
 
 export default function AssetsPage() {
   const { t } = useTranslation()
+  const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!validTypes.includes(file.type)) {
+      setUploadStatus({ type: 'error', message: 'Invalid file type. Use JPEG, PNG, or WebP.' })
+      return
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadStatus({ type: 'error', message: 'File too large. Max 10MB.' })
+      return
+    }
+
+    setUploading(true)
+    setUploadStatus(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      formData.append('name', file.name.replace(/\.[^/.]+$/, ''))
+
+      const res = await fetch('/api/inference/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Upload failed')
+      }
+
+      setUploadStatus({
+        type: 'success',
+        message: `Asset "${data.name || file.name}" created! Job ID: ${data.job_id}`,
+      })
+    } catch (err) {
+      setUploadStatus({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Upload failed',
+      })
+    } finally {
+      setUploading(false)
+      // Reset file input so the same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   return (
     <div className="flex h-full">
@@ -35,6 +95,27 @@ export default function AssetsPage() {
           ))}
         </div>
 
+        {/* Upload status message */}
+        {uploadStatus && (
+          <div className={`mx-3 mt-3 p-2.5 rounded-md text-xs flex items-start gap-2 ${
+            uploadStatus.type === 'success'
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {uploadStatus.type === 'success'
+              ? <CheckCircle size={14} className="shrink-0 mt-0.5" />
+              : <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            }
+            <span>{uploadStatus.message}</span>
+            <button
+              onClick={() => setUploadStatus(null)}
+              className="ml-auto shrink-0 opacity-60 hover:opacity-100"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Asset list */}
         <div className="flex-1 overflow-auto p-3">
           <div className="text-center py-12 text-muted text-sm">
@@ -46,9 +127,30 @@ export default function AssetsPage() {
 
         {/* Upload button */}
         <div className="p-3 border-t border-panel-border">
-          <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-accent-hover transition-colors" aria-label={t('assets.uploadAriaLabel')}>
-            <Upload size={16} aria-hidden="true" />
-            {t('assets.upload')}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={handleUploadClick}
+            disabled={uploading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label={t('assets.uploadAriaLabel')}
+          >
+            {uploading ? (
+              <>
+                <Loader2 size={16} className="spinner" aria-hidden="true" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Upload size={16} aria-hidden="true" />
+                {t('assets.upload')}
+              </>
+            )}
           </button>
         </div>
       </div>
