@@ -2,17 +2,17 @@
 
 import { Monitor, Box } from 'lucide-react'
 import { useViewStore } from '@/lib/stores/view-store'
+import { useTranslation } from '@/lib/i18n'
 
 /**
  * View Mode Switcher — Toggle between 2D Edit and 3D Simulation views.
- * 
- * Design: Apple-style minimal toggle with smooth transition.
  */
 export function ViewModeSwitcher() {
   const { viewMode, setViewMode } = useViewStore()
+  const { t } = useTranslation()
 
   return (
-    <div className="flex items-center bg-gray-100 rounded-lg p-0.5" role="radiogroup" aria-label="视图模式切换">
+    <div className="flex items-center bg-gray-100 rounded-lg p-0.5" role="radiogroup" aria-label={t('viewMode.ariaLabel')}>
       <button
         onClick={() => setViewMode('2d')}
         role="radio"
@@ -24,7 +24,7 @@ export function ViewModeSwitcher() {
         }`}
       >
         <Monitor size={14} aria-hidden="true" />
-        2D 编辑
+        {t('viewMode.2d')}
       </button>
       <button
         onClick={() => setViewMode('3d')}
@@ -37,7 +37,7 @@ export function ViewModeSwitcher() {
         }`}
       >
         <Box size={14} aria-hidden="true" />
-        3D 演示
+        {t('viewMode.3d')}
       </button>
     </div>
   )

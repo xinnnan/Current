@@ -4,6 +4,8 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useTranslation } from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/shared/language-switcher'
 
 function LoginForm() {
   const [isLogin, setIsLogin] = useState(true)
@@ -16,6 +18,7 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectPath = searchParams.get('redirect') || '/'
+  const { t } = useTranslation()
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,10 +36,10 @@ function LoginForm() {
       } else {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
-        setMessage('注册成功！请查收邮箱确认链接。')
+        setMessage(t('auth.registerSuccess'))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '操作失败')
+      setError(err instanceof Error ? err.message : t('auth.operationFailed'))
     } finally {
       setLoading(false)
     }
@@ -45,19 +48,24 @@ function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-sm">
+        {/* Language switcher */}
+        <div className="flex justify-end mb-2">
+          <LanguageSwitcher />
+        </div>
+
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-[var(--radius-xl)] mb-3">
             <span className="text-xl font-bold text-accent">C</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Current</h1>
-          <p className="text-sm text-muted mt-1">工业地图与物理引擎</p>
+          <p className="text-sm text-muted mt-1">{t('auth.subtitle')}</p>
         </div>
 
         {/* Auth Form */}
         <form onSubmit={handleAuth} className="bg-panel-bg border border-panel-border rounded-[var(--radius-xl)] p-6 shadow-md space-y-4">
           <h2 className="text-lg font-medium text-center">
-            {isLogin ? '登录' : '注册'}
+            {isLogin ? t('auth.login') : t('auth.register')}
           </h2>
 
           {error && (
@@ -75,7 +83,7 @@ function LoginForm() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-xs text-muted mb-1">邮箱</label>
+            <label htmlFor="email" className="block text-xs text-muted mb-1">{t('auth.email')}</label>
             <input
               id="email"
               type="email"
@@ -88,7 +96,7 @@ function LoginForm() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-xs text-muted mb-1">密码</label>
+            <label htmlFor="password" className="block text-xs text-muted mb-1">{t('auth.password')}</label>
             <div className="relative">
               <input
                 id="password"
@@ -97,14 +105,14 @@ function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                placeholder="至少 6 位"
+                placeholder={t('auth.passwordPlaceholder')}
                 className="w-full px-3 py-2 pr-10 text-sm bg-input-bg border border-border rounded-[var(--radius-md)] focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent transition-colors"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors p-0.5"
-                aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
               >
                 {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
@@ -119,10 +127,10 @@ function LoginForm() {
             {loading ? (
               <>
                 <Loader2 size={14} className="spinner" />
-                {isLogin ? '登录中...' : '注册中...'}
+                {isLogin ? t('auth.loggingIn') : t('auth.registering')}
               </>
             ) : (
-              isLogin ? '登录' : '注册'
+              isLogin ? t('auth.login') : t('auth.register')
             )}
           </button>
 
@@ -132,13 +140,13 @@ function LoginForm() {
               onClick={() => { setIsLogin(!isLogin); setError(null); setMessage(null) }}
               className="text-xs text-muted hover:text-accent transition-colors"
             >
-              {isLogin ? '没有账号？注册' : '已有账号？登录'}
+              {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
             </button>
           </div>
         </form>
 
         <p className="text-[10px] text-center text-muted-foreground mt-4">
-          AGV/仓储自动化项目规划 · 吞吐量验证与运力测算
+          {t('auth.tagline')}
         </p>
       </div>
     </div>

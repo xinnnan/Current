@@ -16,13 +16,15 @@ import {
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { useTranslation } from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/shared/language-switcher'
 
-const navItems = [
-  { href: '/', icon: LayoutDashboard, label: '项目概览', exact: true },
-  { href: '/assets', icon: Box, label: '资产库' },
-  { href: '/map', icon: Map, label: '地图编辑' },
-  { href: '/simulation', icon: Play, label: '仿真分析' },
-  { href: '/settings', icon: Settings, label: '设置' },
+const NAV_KEYS = [
+  { href: '/', icon: LayoutDashboard, labelKey: 'nav.overview', exact: true },
+  { href: '/assets', icon: Box, labelKey: 'nav.assets' },
+  { href: '/map', icon: Map, labelKey: 'nav.map' },
+  { href: '/simulation', icon: Play, labelKey: 'nav.simulation' },
+  { href: '/settings', icon: Settings, labelKey: 'nav.settings' },
 ]
 
 export function Sidebar() {
@@ -30,6 +32,7 @@ export function Sidebar() {
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
   const [user, setUser] = useState<SupabaseUser | null>(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     const supabase = createClient()
@@ -54,7 +57,7 @@ export function Sidebar() {
         collapsed ? 'w-14' : 'w-52'
       } h-full bg-sidebar-bg border-r border-sidebar-border flex flex-col transition-[width] duration-[var(--transition-normal)] shrink-0`}
       role="navigation"
-      aria-label="主导航"
+      aria-label={t('sidebar.mainNav')}
     >
       {/* Logo */}
       <div className="h-12 flex items-center justify-between px-3 border-b border-sidebar-border">
@@ -66,7 +69,7 @@ export function Sidebar() {
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={`p-1 rounded-[var(--radius-sm)] text-muted hover:text-foreground hover:bg-gray-100 transition-colors ${collapsed ? 'mx-auto' : ''}`}
-          aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          aria-label={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
         >
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
@@ -74,7 +77,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 py-1.5" role="list">
-        {navItems.map((item) => {
+        {NAV_KEYS.map((item) => {
           const isActive = item.exact
             ? pathname === item.href
             : pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
@@ -83,7 +86,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               aria-current={isActive ? 'page' : undefined}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.labelKey) : undefined}
               className={`
                 relative flex items-center gap-2.5 mx-2 my-0.5 px-2.5 py-2 text-sm rounded-[var(--radius-md)] transition-colors duration-[var(--transition-fast)]
                 ${collapsed ? 'justify-center' : ''}
@@ -99,11 +102,18 @@ export function Sidebar() {
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-accent rounded-r-full" />
               )}
               <item.icon size={18} aria-hidden="true" />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span>{t(item.labelKey)}</span>}
             </Link>
           )
         })}
       </nav>
+
+      {/* Language switcher */}
+      {!collapsed && (
+        <div className="px-3 pb-1">
+          <LanguageSwitcher />
+        </div>
+      )}
 
       {/* User info */}
       {user && (
@@ -112,8 +122,8 @@ export function Sidebar() {
             <button
               onClick={handleLogout}
               className="w-full flex items-center justify-center py-1.5 text-muted hover:text-danger rounded-[var(--radius-sm)] hover:bg-danger-light transition-colors"
-              aria-label="退出登录"
-              title="退出登录"
+              aria-label={t('sidebar.logout')}
+              title={t('sidebar.logout')}
             >
               <LogOut size={16} />
             </button>
@@ -128,8 +138,8 @@ export function Sidebar() {
               <button
                 onClick={handleLogout}
                 className="p-1 text-muted hover:text-danger rounded-[var(--radius-sm)] hover:bg-danger-light transition-colors"
-                aria-label="退出登录"
-                title="退出登录"
+                aria-label={t('sidebar.logout')}
+                title={t('sidebar.logout')}
               >
                 <LogOut size={14} />
               </button>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Package, Search, Plus, Info } from 'lucide-react'
 import type { AssetCategory } from '@/lib/types'
+import { useTranslation } from '@/lib/i18n'
 
 interface AssetLibraryItem {
   id: string
@@ -20,20 +21,7 @@ interface AssetPickerProps {
   selectedAssetId?: string | null
 }
 
-const CATEGORY_LABELS: Record<AssetCategory, string> = {
-  agv_lmr: '潜伏式 AGV',
-  agv_fmr: '叉车式 AGV',
-  agv_ctu: '料箱车',
-  shelf: '货架',
-  conveyor: '传送带',
-  robot_arm: '机械臂',
-  workstation: '工作台',
-  pallet: '托盘',
-  charger: '充电桩',
-  other: '其他',
-}
-
-const CATEGORY_ICONS: Record<AssetCategory, string> = {
+const CATEGORY_ICON_MAP: Record<AssetCategory, string> = {
   agv_lmr: '🤖',
   agv_fmr: '🚗',
   agv_ctu: '📦',
@@ -46,21 +34,47 @@ const CATEGORY_ICONS: Record<AssetCategory, string> = {
   other: '📦',
 }
 
-// Demo assets for testing
-const DEMO_ASSETS: AssetLibraryItem[] = [
-  { id: 'agv_1', name: '潜伏式 AGV', category: 'agv_lmr', modelUrl: null, thumbnailUrl: null, dimension_length: 1.2, dimension_width: 0.8, dimension_height: 0.3 },
-  { id: 'agv_2', name: '叉车式 AGV', category: 'agv_fmr', modelUrl: null, thumbnailUrl: null, dimension_length: 2.0, dimension_width: 1.0, dimension_height: 1.5 },
-  { id: 'shelf_1', name: '标准货架', category: 'shelf', modelUrl: null, thumbnailUrl: null, dimension_length: 1.2, dimension_width: 0.5, dimension_height: 2.0 },
-  { id: 'shelf_2', name: '重型货架', category: 'shelf', modelUrl: null, thumbnailUrl: null, dimension_length: 2.7, dimension_width: 1.0, dimension_height: 3.0 },
-  { id: 'charger_1', name: '充电桩', category: 'charger', modelUrl: null, thumbnailUrl: null, dimension_length: 0.5, dimension_width: 0.3, dimension_height: 1.2 },
-  { id: 'conv_1', name: '滚筒传送带', category: 'conveyor', modelUrl: null, thumbnailUrl: null, dimension_length: 3.0, dimension_width: 0.6, dimension_height: 0.8 },
-  { id: 'ws_1', name: '操作工作台', category: 'workstation', modelUrl: null, thumbnailUrl: null, dimension_length: 1.5, dimension_width: 0.8, dimension_height: 0.9 },
-  { id: 'pallet_1', name: '标准托盘', category: 'pallet', modelUrl: null, thumbnailUrl: null, dimension_length: 1.2, dimension_width: 1.0, dimension_height: 0.15 },
+const CATEGORY_KEY_MAP: Record<AssetCategory, string> = {
+  agv_lmr: 'assetPicker.agvLmr',
+  agv_fmr: 'assetPicker.agvFmr',
+  agv_ctu: 'assetPicker.agvCtu',
+  shelf: 'assetPicker.shelf',
+  conveyor: 'assetPicker.conveyor',
+  robot_arm: 'assetPicker.robotArm',
+  workstation: 'assetPicker.workstation',
+  pallet: 'assetPicker.pallet',
+  charger: 'assetPicker.charger',
+  other: 'assetPicker.other',
+}
+
+// Demo assets — names are localized via keys
+const DEMO_ASSET_KEYS: { id: string; nameKey: string; category: AssetCategory; dimension_length: number; dimension_width: number; dimension_height: number }[] = [
+  { id: 'agv_1', nameKey: 'assetPicker.agvLmr', category: 'agv_lmr', dimension_length: 1.2, dimension_width: 0.8, dimension_height: 0.3 },
+  { id: 'agv_2', nameKey: 'assetPicker.agvFmr', category: 'agv_fmr', dimension_length: 2.0, dimension_width: 1.0, dimension_height: 1.5 },
+  { id: 'shelf_1', nameKey: 'assetPicker.shelf', category: 'shelf', dimension_length: 1.2, dimension_width: 0.5, dimension_height: 2.0 },
+  { id: 'shelf_2', nameKey: 'assetPicker.shelf', category: 'shelf', dimension_length: 2.7, dimension_width: 1.0, dimension_height: 3.0 },
+  { id: 'charger_1', nameKey: 'assetPicker.charger', category: 'charger', dimension_length: 0.5, dimension_width: 0.3, dimension_height: 1.2 },
+  { id: 'conv_1', nameKey: 'assetPicker.conveyor', category: 'conveyor', dimension_length: 3.0, dimension_width: 0.6, dimension_height: 0.8 },
+  { id: 'ws_1', nameKey: 'assetPicker.workstation', category: 'workstation', dimension_length: 1.5, dimension_width: 0.8, dimension_height: 0.9 },
+  { id: 'pallet_1', nameKey: 'assetPicker.pallet', category: 'pallet', dimension_length: 1.2, dimension_width: 1.0, dimension_height: 0.15 },
 ]
 
 export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all')
+  const { t } = useTranslation()
+
+  // Build localized demo assets
+  const DEMO_ASSETS: AssetLibraryItem[] = DEMO_ASSET_KEYS.map(a => ({
+    id: a.id,
+    name: t(a.nameKey),
+    category: a.category,
+    modelUrl: null,
+    thumbnailUrl: null,
+    dimension_length: a.dimension_length,
+    dimension_width: a.dimension_width,
+    dimension_height: a.dimension_height,
+  }))
 
   const filteredAssets = DEMO_ASSETS.filter((asset) => {
     const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -74,7 +88,7 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
       <div className="p-3 border-b border-panel-border">
         <h3 className="text-sm font-medium flex items-center gap-1.5">
           <Package size={14} />
-          资产库
+          {t('assetPicker.title')}
         </h3>
       </div>
 
@@ -86,7 +100,7 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索资产..."
+            placeholder={t('assetPicker.search')}
             className="w-full pl-7 pr-2 py-1.5 text-xs border border-gray-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
@@ -100,7 +114,7 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
             categoryFilter === 'all' ? 'bg-accent/10 text-accent' : 'bg-gray-100 text-muted hover:bg-gray-200'
           }`}
         >
-          全部
+          {t('assetPicker.all')}
         </button>
         {(['agv_lmr', 'agv_fmr', 'shelf', 'charger', 'conveyor', 'workstation', 'pallet'] as const).map((cat) => (
           <button
@@ -110,7 +124,7 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
               categoryFilter === cat ? 'bg-accent/10 text-accent' : 'bg-gray-100 text-muted hover:bg-gray-200'
             }`}
           >
-            {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}
+            {CATEGORY_ICON_MAP[cat]} {t(CATEGORY_KEY_MAP[cat])}
           </button>
         ))}
       </div>
@@ -128,7 +142,7 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
             }`}
           >
             <div className="flex items-center gap-2">
-              <span className="text-base">{CATEGORY_ICONS[asset.category]}</span>
+              <span className="text-base">{CATEGORY_ICON_MAP[asset.category]}</span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{asset.name}</div>
                 <div className="text-[10px] text-muted">
@@ -141,7 +155,7 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
         ))}
         {filteredAssets.length === 0 && (
           <div className="text-center text-muted text-xs py-4">
-            没有找到匹配的资产
+            {t('assetPicker.noMatch')}
           </div>
         )}
       </div>
@@ -150,12 +164,12 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
       <div className="p-2 border-t border-panel-border">
         <div className="flex items-center gap-1 text-[10px] text-muted">
           <Info size={10} />
-          <span>选择资产后点击画布放置</span>
+          <span>{t('assetPicker.hint')}</span>
         </div>
       </div>
     </div>
   )
 }
 
-export { DEMO_ASSETS, CATEGORY_LABELS, CATEGORY_ICONS }
+export { CATEGORY_KEY_MAP, CATEGORY_ICON_MAP }
 export type { AssetLibraryItem }

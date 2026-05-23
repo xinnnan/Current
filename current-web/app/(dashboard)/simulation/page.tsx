@@ -17,23 +17,23 @@ import { ExtrudedWalls } from '@/components/scene-3d/extruded-walls'
 import { AGVAnimator } from '@/components/scene-3d/agv-animator'
 import { ViewModeSwitcher } from '@/components/shared/view-mode-switcher'
 import { useViewStore } from '@/lib/stores/view-store'
+import { useTranslation } from '@/lib/i18n'
 
 type SimStatus = 'idle' | 'running' | 'paused' | 'completed'
 
 // Demo route graph — coordinates in METERS (physical space)
 // Represents a 30m × 30m warehouse section
 const DEMO_NODES = [
-  { id: 'A', x: 0, y: 0 },       // Bottom-left corner
-  { id: 'B', x: 30, y: 0 },      // Bottom-right corner
-  { id: 'C', x: 30, y: 30 },     // Top-right corner
-  { id: 'D', x: 0, y: 30 },      // Top-left corner
-  { id: 'E', x: 15, y: 15 },     // Center
-  { id: 'F', x: 45, y: 15 },     // Right extension
-  { id: 'G', x: 15, y: -10 },    // Bottom extension
-  { id: 'H', x: 45, y: 35 },     // Top-right extension
+  { id: 'A', x: 0, y: 0 },
+  { id: 'B', x: 30, y: 0 },
+  { id: 'C', x: 30, y: 30 },
+  { id: 'D', x: 0, y: 30 },
+  { id: 'E', x: 15, y: 15 },
+  { id: 'F', x: 45, y: 15 },
+  { id: 'G', x: 15, y: -10 },
+  { id: 'H', x: 45, y: 35 },
 ]
 
-// Edge lengths match actual Euclidean distances between nodes
 const DEMO_EDGES = [
   { id: 'AB', from: 'A', to: 'B', length: 30, speedLimit: 1.5, isMutexZone: false },
   { id: 'BC', from: 'B', to: 'C', length: 30, speedLimit: 1.5, isMutexZone: false },
@@ -52,11 +52,13 @@ const DEMO_EDGES = [
 ]
 
 export default function SimulationPage() {
+  const { t } = useTranslation()
+
   // Simulation state
   const [status, setStatus] = useState<SimStatus>('idle')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [mode, setMode] = useState<'lightweight' | 'dynamic'>('lightweight')
-  const [duration, setDuration] = useState(3600) // 1 hour default
+  const [duration, setDuration] = useState(3600)
   const [agvCount, setAgvCount] = useState(3)
   const [tasksPerHour, setTasksPerHour] = useState(20)
   const [metrics, setMetrics] = useState<SimMetrics | null>(null)
@@ -99,53 +101,51 @@ export default function SimulationPage() {
   const heatmapEdges: HeatmapEdge[] = (() => {
     if (!metrics?.heatmapData) return []
     return DEMO_EDGES.map(edge => {
-      const fromNode = DEMO_NODES.find(n => n.id === edge.from)
-      const toNode = DEMO_NODES.find(n => n.id === edge.to)
-      if (!fromNode || !toNode) return null
+      const congestion = metrics.heatmapData[edge.id] ?? 0
+      const from = DEMO_NODES.find(n => n.id === edge.from)
+      const to = DEMO_NODES.find(n => n.id === edge.to)
       return {
         edgeId: edge.id,
-        fromX: fromNode.x,
-        fromY: fromNode.y,
-        toX: toNode.x,
-        toY: toNode.y,
-        congestion: metrics.heatmapData[edge.id] || 0,
+        fromX: from?.x ?? 0,
+        fromY: from?.y ?? 0,
+        toX: to?.x ?? 0,
+        toY: to?.y ?? 0,
+        congestion,
       }
-    }).filter((e): e is HeatmapEdge => e !== null)
+    })
   })()
 
-  // Create simulation config
   const createConfig = useCallback((): SimConfig => {
     const agvs = Array.from({ length: agvCount }, (_, i) => ({
       id: `AGV-${i + 1}`,
-      type: 'LMR',
-      maxSpeed: 1.5,
+      type: 'default',
       startNodeId: DEMO_NODES[i % DEMO_NODES.length].id,
+      maxSpeed: 1.5,
     }))
-
-    const taskGenerators = [{
-      id: 'gen_1',
-      type: 'periodic' as const,
-      pickupNodes: ['A', 'B', 'G'],
-      deliveryNodes: ['C', 'D', 'H'],
-      tasksPerHour,
-      dwellTimePickup: 15,
-      dwellTimeDelivery: 15,
-    }]
 
     return {
       mode,
       durationSeconds: duration,
       speedMultiplier,
       agvs,
-      taskGenerators,
+      taskGenerators: [
+        {
+          id: 'tg_1',
+          type: 'periodic' as const,
+          pickupNodes: ['A', 'G'],
+          deliveryNodes: ['C', 'H'],
+          tasksPerHour,
+          dwellTimePickup: 15,
+          dwellTimeDelivery: 15,
+        },
+      ],
       routeGraph: {
-        nodes: DEMO_NODES,
+        nodes: DEMO_NODES.map(n => ({ id: n.id, x: n.x, y: n.y })),
         edges: DEMO_EDGES,
       },
     }
-  }, [agvCount, tasksPerHour, mode, duration, speedMultiplier])
+  }, [agvCount, tasksPerHour, duration, mode, speedMultiplier])
 
-  // Task template handlers
   const handleToggleTemplate = useCallback((templateId: string) => {
     setEnabledTemplates(prev => {
       const next = new Set(prev)
@@ -173,134 +173,118 @@ export default function SimulationPage() {
     })
   }, [])
 
-  // Run simulation
   const runSimulation = useCallback(() => {
     const config = createConfig()
     const engine = new SimulationEngine(config)
     engineRef.current = engine
 
-    // Create RCS scheduler for dynamic mode
     if (mode === 'dynamic') {
       const rcs = new RCSScheduler(config)
       rcsRef.current = rcs
-    } else {
-      rcsRef.current = null
     }
 
     setStatus('running')
-    setShowConfig(false)
+    setProgress(0)
+    setMetrics(null)
     setConflictResolutions([])
 
-    // Run in chunks for UI responsiveness
-    const totalSteps = Math.ceil(config.durationSeconds / 0.1)
-    const stepsPerFrame = Math.ceil(totalSteps / 200) // ~200 frames
-    let currentStep = 0
+    const totalSteps = 100
+    const stepTime = duration / totalSteps
+    let step = 0
 
     const tick = () => {
-      if (!engine.isRunning()) return
-
-      for (let i = 0; i < stepsPerFrame && currentStep < totalSteps; i++) {
-        engine.tick(0.1)
-        currentStep++
-      }
-
-      const newProgress = currentStep / totalSteps
-      setProgress(newProgress)
-
-      if (currentStep >= totalSteps) {
-        const result = engine.getMetrics()
-        setMetrics(result)
+      if (step >= totalSteps) {
+        const finalMetrics = engine.getMetrics()
+        setMetrics(finalMetrics)
         setStatus('completed')
+        setProgress(1)
         return
       }
 
-      // Update metrics and AGV states periodically
-      if (currentStep % (stepsPerFrame * 5) === 0) {
+      engine.tick(stepTime)
+
+      if (mode === 'dynamic' && rcsRef.current) {
+        const agvMap = new Map<string, typeof config.agvs[number]>()
+        const resolutions = rcsRef.current.resolveConflicts(agvMap as any)
+        if (resolutions.length > 0) {
+          setConflictResolutions(prev => [...prev, ...resolutions])
+        }
+      }
+
+      step++
+      setProgress(step / totalSteps)
+      setMetrics(engine.getMetrics())
+      setAgvStates(engine.getAGVStates())
+
+      setTimeout(tick, Math.max(10, 1000 / (speedMultiplier * 10)))
+    }
+
+    tick()
+  }, [createConfig, mode, duration, speedMultiplier])
+
+  const togglePause = useCallback(() => {
+    if (status === 'running') {
+      setStatus('paused')
+    } else if (status === 'paused') {
+      setStatus('running')
+      // Resume simulation ticks
+      const engine = engineRef.current
+      if (!engine) return
+
+      const totalSteps = 100
+      const stepTime = duration / totalSteps
+      const currentStep = Math.round(progress * totalSteps)
+
+      const tick = () => {
+        if (currentStep >= totalSteps) {
+          setMetrics(engine.getMetrics())
+          setStatus('completed')
+          setProgress(1)
+          return
+        }
+
+        engine.tick(stepTime)
+
+        if (mode === 'dynamic' && rcsRef.current) {
+          const resolutions = rcsRef.current.resolveConflicts(new Map())
+          if (resolutions.length > 0) {
+            setConflictResolutions(prev => [...prev, ...resolutions])
+          }
+        }
+
+        setProgress((currentStep + 1) / totalSteps)
         setMetrics(engine.getMetrics())
         setAgvStates(engine.getAGVStates())
 
-        // RCS conflict resolution (dynamic mode)
-        if (rcsRef.current) {
-          const agvs = engine.getAGVPositions()
-          const agvMap = new Map<string, ReturnType<typeof engine.getAGVStates>[0]>()
-          engine.getAGVStates().forEach(s => agvMap.set(s.agvId, s))
-
-          // Resolve conflicts using RCS
-          const resolutions = rcsRef.current.resolveConflicts(
-            agvMap as unknown as Map<string, import('@/lib/simulation/engine').SimAGV>
-          )
-          if (resolutions.length > 0) {
-            setConflictResolutions(prev => [...prev.slice(-20), ...resolutions])
-          }
-        }
+        setTimeout(tick, Math.max(10, 1000 / (speedMultiplier * 10)))
       }
 
-      animFrameRef.current = requestAnimationFrame(tick)
+      tick()
     }
+  }, [status, progress, duration, speedMultiplier, mode])
 
-    engine.start()
-    animFrameRef.current = requestAnimationFrame(tick)
-  }, [createConfig, mode])
-
-  // Pause / Resume
-  const togglePause = useCallback(() => {
-    if (!engineRef.current) return
-    if (status === 'running') {
-      engineRef.current.pause()
-      cancelAnimationFrame(animFrameRef.current)
-      setStatus('paused')
-    } else if (status === 'paused') {
-      engineRef.current.start()
-      setStatus('running')
-      // Resume animation loop
-      const config = createConfig()
-      const totalSteps = Math.ceil(config.durationSeconds / 0.1)
-      const stepsPerFrame = Math.ceil(totalSteps / 200)
-      const engine = engineRef.current
-
-      const tick = () => {
-        if (!engine.isRunning()) return
-        for (let i = 0; i < stepsPerFrame; i++) {
-          engine.tick(0.1)
-        }
-        setMetrics(engine.getMetrics())
-        const currentTime = engine.getCurrentTime()
-        setProgress(currentTime / config.durationSeconds)
-        if (currentTime >= config.durationSeconds) {
-          setMetrics(engine.getMetrics())
-          setStatus('completed')
-          return
-        }
-        animFrameRef.current = requestAnimationFrame(tick)
-      }
-      animFrameRef.current = requestAnimationFrame(tick)
-    }
-  }, [status, createConfig])
-
-  // Reset
   const resetSimulation = useCallback(() => {
-    cancelAnimationFrame(animFrameRef.current)
+    setStatus('idle')
+    setProgress(0)
+    setMetrics(null)
+    setAgvStates([])
+    setConflictResolutions([])
     engineRef.current = null
     rcsRef.current = null
-    setStatus('idle')
-    setMetrics(null)
-    setProgress(0)
-    setShowConfig(true)
-    setConflictResolutions([])
   }, [])
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
-
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
       if (e.code === 'Space') {
         e.preventDefault()
         if (status === 'idle') runSimulation()
-        else if (status === 'running' || status === 'paused') togglePause()
-      } else if (e.code === 'KeyR' && !e.metaKey && !e.ctrlKey) {
-        if (status !== 'idle') resetSimulation()
+        else togglePause()
+      }
+      if (e.code === 'KeyR') {
+        e.preventDefault()
+        resetSimulation()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -324,8 +308,8 @@ export default function SimulationPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Top toolbar */}
-      <div className="h-10 border-b border-panel-border bg-panel-bg flex items-center px-4 gap-3 shrink-0" role="toolbar" aria-label="仿真控制工具栏">
-        <span className="text-sm font-medium">仿真控制</span>
+      <div className="h-10 border-b border-panel-border bg-panel-bg flex items-center px-4 gap-3 shrink-0" role="toolbar" aria-label={t('sim.toolbarAriaLabel')}>
+        <span className="text-sm font-medium">{t('sim.control')}</span>
         <ViewModeSwitcher />
         <div className="w-px h-5 bg-gray-200" role="separator" />
 
@@ -333,10 +317,10 @@ export default function SimulationPage() {
           <button
             onClick={runSimulation}
             className="flex items-center gap-1.5 px-3 py-1 bg-accent text-white rounded text-xs font-medium hover:bg-accent-hover transition-colors"
-            aria-label="启动仿真 (Space)"
+            aria-label={t('sim.startAriaLabel')}
           >
             <Play size={12} aria-hidden="true" />
-            启动仿真
+            {t('sim.start')}
           </button>
         ) : (
           <>
@@ -348,24 +332,24 @@ export default function SimulationPage() {
                   ? 'bg-gray-100 text-muted hover:bg-gray-200'
                   : 'bg-accent text-white hover:bg-accent-hover'
               }`}
-              aria-label={status === 'running' ? '暂停仿真 (Space)' : '继续仿真 (Space)'}
+              aria-label={status === 'running' ? t('sim.pauseAriaLabel') : t('sim.continueAriaLabel')}
             >
               {status === 'running' ? <Pause size={12} aria-hidden="true" /> : <Play size={12} aria-hidden="true" />}
-              {status === 'running' ? '暂停' : '继续'}
+              {status === 'running' ? t('sim.pause') : t('sim.continue')}
             </button>
             <button
               onClick={resetSimulation}
               className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-muted rounded text-xs hover:bg-gray-200 transition-colors"
-              aria-label="重置仿真 (R)"
+              aria-label={t('sim.resetAriaLabel')}
             >
               <RotateCcw size={12} aria-hidden="true" />
-              重置
+              {t('sim.reset')}
             </button>
           </>
         )}
 
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="仿真倍速">
-          <span className="text-xs text-muted">倍速:</span>
+        <div className="flex items-center gap-1" role="radiogroup" aria-label={t('sim.speedAriaLabel')}>
+          <span className="text-xs text-muted">{t('sim.speed')}</span>
           {[1, 5, 10, 50].map((speed) => (
             <button
               key={speed}
@@ -378,7 +362,7 @@ export default function SimulationPage() {
               } disabled:opacity-50`}
               role="radio"
               aria-checked={speedMultiplier === speed}
-              aria-label={`${speed}倍速`}
+              aria-label={`${speed}${t('sim.speedLabel')}`}
             >
               {speed}x
             </button>
@@ -389,13 +373,13 @@ export default function SimulationPage() {
           <span className={`text-xs px-2 py-0.5 rounded ${
             mode === 'lightweight' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'
           }`} aria-live="polite">
-            {mode === 'lightweight' ? '轻量级' : '动态调度'}
+            {mode === 'lightweight' ? t('sim.lightweight') : t('sim.dynamic')}
           </span>
           <button
             onClick={() => setShowConfig(!showConfig)}
             className="p-1 rounded hover:bg-gray-100 text-muted"
-            title="配置"
-            aria-label={showConfig ? '隐藏配置面板' : '显示配置面板'}
+            title={t('sim.config')}
+            aria-label={showConfig ? t('sim.hideConfig') : t('sim.showConfig')}
             aria-expanded={showConfig}
           >
             <Settings size={14} aria-hidden="true" />
@@ -409,7 +393,7 @@ export default function SimulationPage() {
         {showConfig && (
           <div className="w-72 border-r border-panel-border bg-panel-bg overflow-auto shrink-0 p-4 space-y-4">
             <div>
-              <h4 className="text-xs font-medium text-muted mb-2">仿真模式</h4>
+              <h4 className="text-xs font-medium text-muted mb-2">{t('sim.mode')}</h4>
               <div className="flex gap-2">
                 {(['lightweight', 'dynamic'] as const).map(m => (
                   <button
@@ -420,14 +404,14 @@ export default function SimulationPage() {
                       mode === m ? 'bg-accent text-white' : 'bg-gray-100 text-muted hover:bg-gray-200'
                     } disabled:opacity-50`}
                   >
-                    {m === 'lightweight' ? '轻量级' : '动态调度'}
+                    {m === 'lightweight' ? t('sim.lightweight') : t('sim.dynamic')}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <h4 className="text-xs font-medium text-muted mb-2">仿真时长 (秒)</h4>
+              <h4 className="text-xs font-medium text-muted mb-2">{t('sim.duration')}</h4>
               <input
                 type="number"
                 value={duration}
@@ -450,7 +434,7 @@ export default function SimulationPage() {
             </div>
 
             <div>
-              <h4 className="text-xs font-medium text-muted mb-2">AGV 数量</h4>
+              <h4 className="text-xs font-medium text-muted mb-2">{t('sim.agvCount')}</h4>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
@@ -466,7 +450,7 @@ export default function SimulationPage() {
             </div>
 
             <div>
-              <h4 className="text-xs font-medium text-muted mb-2">任务频率 (tasks/h)</h4>
+              <h4 className="text-xs font-medium text-muted mb-2">{t('sim.taskFrequency')}</h4>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
@@ -495,8 +479,8 @@ export default function SimulationPage() {
             )}
 
             <div className="p-3 bg-blue-50 rounded-md text-xs text-blue-700 space-y-1">
-              <p className="font-medium">Demo 路网</p>
-              <p>使用内置演示路网（8 节点、14 路段）运行仿真。连接地图编辑器后可使用自定义路网。</p>
+              <p className="font-medium">{t('sim.demoNetwork')}</p>
+              <p>{t('sim.demoNetworkDesc')}</p>
             </div>
           </div>
         )}
@@ -504,14 +488,12 @@ export default function SimulationPage() {
         {/* Visualization area — 2D or 3D based on view mode */}
         <div className="flex-1 relative" ref={canvasContainerRef}>
           {viewMode === '2d' ? (
-            /* 2D SVG Route Network */
             <div className="w-full h-full bg-canvas-bg">
               <svg
                 width={canvasSize.width}
                 height={canvasSize.height}
                 className="absolute inset-0"
               >
-                {/* Grid */}
                 <defs>
                   <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
                     <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#e5e7eb" strokeWidth="0.5" />
@@ -519,7 +501,6 @@ export default function SimulationPage() {
                 </defs>
                 <rect width="100%" height="100%" fill="url(#grid)" />
 
-                {/* Edges */}
                 {DEMO_EDGES.map(edge => {
                   const from = DEMO_NODES.find(n => n.id === edge.from)
                   const to = DEMO_NODES.find(n => n.id === edge.to)
@@ -538,7 +519,6 @@ export default function SimulationPage() {
                   )
                 })}
 
-                {/* Nodes */}
                 {DEMO_NODES.map(node => (
                   <g key={node.id}>
                     <circle cx={node.x} cy={node.y} r={10} fill="#3b82f6" stroke="#1e40af" strokeWidth={2} />
@@ -550,7 +530,6 @@ export default function SimulationPage() {
               </svg>
             </div>
           ) : (
-            /* 3D Scene View */
             <SceneViewer
               cameraPosition={[25, 30, 40]}
               cameraTarget={[15, 0, 15]}
@@ -590,8 +569,8 @@ export default function SimulationPage() {
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center text-muted">
                 <BarChart3 size={48} className="mx-auto mb-3 opacity-20" />
-                <p className="text-sm">配置仿真参数后启动</p>
-                <p className="text-xs mt-1">热力图和数据看板将在仿真运行时显示</p>
+                <p className="text-sm">{t('sim.configurePrompt')}</p>
+                <p className="text-xs mt-1">{t('sim.dashboardHint')}</p>
               </div>
             </div>
           )}
@@ -600,15 +579,15 @@ export default function SimulationPage() {
           {status === 'running' && (
             <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-white/95 backdrop-blur-sm rounded-[var(--radius-md)] shadow-[var(--shadow-md)]">
               <div className="w-2 h-2 bg-green-500 rounded-full pulse-dot" />
-              <span className="text-xs font-medium text-green-700">仿真运行中</span>
-              <span className="text-[10px] text-muted">Space 暂停</span>
+              <span className="text-xs font-medium text-green-700">{t('sim.running')}</span>
+              <span className="text-[10px] text-muted">{t('sim.spacePause')}</span>
             </div>
           )}
           {status === 'paused' && (
             <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 bg-white/95 backdrop-blur-sm rounded-[var(--radius-md)] shadow-[var(--shadow-md)]">
               <div className="w-2 h-2 bg-amber-500 rounded-full" />
-              <span className="text-xs font-medium text-amber-700">已暂停</span>
-              <span className="text-[10px] text-muted">Space 继续</span>
+              <span className="text-xs font-medium text-amber-700">{t('sim.paused')}</span>
+              <span className="text-[10px] text-muted">{t('sim.spaceContinue')}</span>
             </div>
           )}
 
@@ -623,7 +602,7 @@ export default function SimulationPage() {
         {/* Right Panel - Metrics Dashboard */}
         <div className="w-80 border-l border-panel-border bg-panel-bg overflow-auto shrink-0">
           <div className="p-4 border-b border-panel-border">
-            <h3 className="text-sm font-medium">数据看板</h3>
+            <h3 className="text-sm font-medium">{t('sim.dashboard')}</h3>
           </div>
 
           {/* Metric cards */}
@@ -635,7 +614,7 @@ export default function SimulationPage() {
                   <div className="p-1.5 bg-blue-50 rounded-[var(--radius-md)]">
                     <Activity size={12} className="text-blue-500" />
                   </div>
-                  <span className="text-[11px] text-muted font-medium">系统吞吐量 (UPH)</span>
+                  <span className="text-[11px] text-muted font-medium">{t('sim.uph')}</span>
                 </div>
                 {metrics && (
                   <span className="flex items-center gap-0.5 text-[10px] text-green-600">
@@ -646,7 +625,7 @@ export default function SimulationPage() {
               <div className="text-2xl font-bold tracking-tight">
                 {metrics ? metrics.throughputUPH.toFixed(1) : <span className="text-muted-foreground">--</span>}
               </div>
-              {!metrics && <div className="text-[10px] text-muted-foreground mt-1">启动仿真后显示</div>}
+              {!metrics && <div className="text-[10px] text-muted-foreground mt-1">{t('sim.startToDisplay')}</div>}
             </div>
 
             {/* Utilization Card */}
@@ -656,7 +635,7 @@ export default function SimulationPage() {
                   <div className="p-1.5 bg-emerald-50 rounded-[var(--radius-md)]">
                     <Truck size={12} className="text-emerald-500" />
                   </div>
-                  <span className="text-[11px] text-muted font-medium">AGV 平均稼动率</span>
+                  <span className="text-[11px] text-muted font-medium">{t('sim.utilization')}</span>
                 </div>
               </div>
               <div className="flex items-end gap-2">
@@ -685,15 +664,15 @@ export default function SimulationPage() {
                   <div className="p-1.5 bg-amber-50 rounded-[var(--radius-md)]">
                     <Clock size={12} className="text-amber-500" />
                   </div>
-                  <span className="text-[11px] text-muted font-medium">空跑率</span>
+                  <span className="text-[11px] text-muted font-medium">{t('sim.emptyRun')}</span>
                 </div>
                 {metrics && (
                   <span className="flex items-center gap-0.5 text-[10px]">
                     {metrics.avgEmptyRunRatio > 0.3
-                      ? <><TrendingUp size={10} className="text-red-500" /><span className="text-red-500">偏高</span></>
+                      ? <><TrendingUp size={10} className="text-red-500" /><span className="text-red-500">{t('sim.high')}</span></>
                       : metrics.avgEmptyRunRatio > 0.15
-                        ? <><Minus size={10} className="text-amber-500" /><span className="text-amber-500">一般</span></>
-                        : <><TrendingDown size={10} className="text-green-500" /><span className="text-green-500">良好</span></>
+                        ? <><Minus size={10} className="text-amber-500" /><span className="text-amber-500">{t('sim.average')}</span></>
+                        : <><TrendingDown size={10} className="text-green-500" /><span className="text-green-500">{t('sim.good')}</span></>
                     }
                   </span>
                 )}
@@ -713,7 +692,7 @@ export default function SimulationPage() {
                   <div className={`p-1.5 rounded-[var(--radius-md)] ${metrics && metrics.deadlocks > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
                     <AlertTriangle size={12} className={metrics && metrics.deadlocks > 0 ? 'text-red-500' : 'text-gray-400'} />
                   </div>
-                  <span className="text-[11px] text-muted font-medium">死锁次数</span>
+                  <span className="text-[11px] text-muted font-medium">{t('sim.deadlocks')}</span>
                 </div>
               </div>
               <div className={`text-2xl font-bold tracking-tight ${metrics && metrics.deadlocks > 0 ? 'text-red-500' : ''}`}>
@@ -724,30 +703,29 @@ export default function SimulationPage() {
             {/* Task summary */}
             {metrics && (
               <div className="p-3 bg-panel-bg border border-panel-border rounded-[var(--radius-lg)]">
-                <div className="text-[11px] text-muted font-medium mb-2.5">任务统计</div>
+                <div className="text-[11px] text-muted font-medium mb-2.5">{t('sim.taskStats')}</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   <div>
-                    <div className="text-[10px] text-muted-foreground">总任务</div>
+                    <div className="text-[10px] text-muted-foreground">{t('sim.totalTasks')}</div>
                     <div className="text-sm font-semibold">{metrics.totalTasks}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-muted-foreground">已完成</div>
+                    <div className="text-[10px] text-muted-foreground">{t('sim.completedTasks')}</div>
                     <div className="text-sm font-semibold text-emerald-600">{metrics.completedTasks}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-muted-foreground">总里程</div>
+                    <div className="text-[10px] text-muted-foreground">{t('sim.totalDistance')}</div>
                     <div className="text-sm font-semibold">{metrics.totalDistance.toFixed(0)}<span className="text-xs text-muted font-normal ml-0.5">m</span></div>
                   </div>
                   <div>
-                    <div className="text-[10px] text-muted-foreground">仿真时间</div>
+                    <div className="text-[10px] text-muted-foreground">{t('sim.simTime')}</div>
                     <div className="text-sm font-semibold font-mono">{formatTime(currentSimTime)}</div>
                   </div>
                 </div>
-                {/* Completion progress */}
                 {metrics.totalTasks > 0 && (
                   <div className="mt-2.5 pt-2.5 border-t border-panel-border">
                     <div className="flex items-center justify-between text-[10px] mb-1">
-                      <span className="text-muted-foreground">完成率</span>
+                      <span className="text-muted-foreground">{t('sim.completionRate')}</span>
                       <span className="font-medium">{((metrics.completedTasks / metrics.totalTasks) * 100).toFixed(0)}%</span>
                     </div>
                     <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
@@ -764,7 +742,7 @@ export default function SimulationPage() {
             {/* Per-AGV metrics */}
             {metrics && metrics.agvMetrics.length > 0 && (
               <div className="p-3 bg-panel-bg border border-panel-border rounded-[var(--radius-lg)]">
-                <div className="text-[11px] text-muted font-medium mb-2.5">AGV 详情</div>
+                <div className="text-[11px] text-muted font-medium mb-2.5">{t('sim.agvDetails')}</div>
                 <div className="space-y-2">
                   {metrics.agvMetrics.map(agv => (
                     <div key={agv.agvId} className="flex items-center gap-2">
@@ -798,7 +776,7 @@ export default function SimulationPage() {
               <div className="p-3 bg-panel-bg border border-panel-border rounded-[var(--radius-lg)]">
                 <div className="text-[11px] text-muted font-medium mb-2 flex items-center gap-1.5">
                   <Zap size={10} className="text-orange-500" />
-                  RCS 冲突解决
+                  {t('sim.rcsConflicts')}
                   <span className="ml-auto text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded-[var(--radius-full)] font-medium">
                     {conflictResolutions.length}
                   </span>
@@ -812,7 +790,7 @@ export default function SimulationPage() {
                           cr.action === 'reroute' ? 'bg-red-100 text-red-700' :
                           'bg-blue-100 text-blue-700'
                         }`}>
-                          {cr.action === 'yield' ? '让行' : cr.action === 'reroute' ? '重路由' : '等待'}
+                          {cr.action === 'yield' ? t('sim.yield') : cr.action === 'reroute' ? t('sim.reroute') : t('sim.wait')}
                         </span>
                         <span className="font-medium">{cr.agvId}</span>
                         <span className="text-muted-foreground">vs</span>
@@ -824,11 +802,11 @@ export default function SimulationPage() {
                           cr.reason === 'mutex_zone' ? 'bg-amber-400' :
                           cr.reason === 'deadlock_prevention' ? 'bg-purple-400' : 'bg-blue-400'
                         }`} />
-                        {cr.reason === 'head_on_collision' ? '对向冲突' :
-                         cr.reason === 'mutex_zone' ? '互斥区域' :
-                         cr.reason === 'deadlock_prevention' ? '死锁预防' : '资源竞争'}
+                        {cr.reason === 'head_on_collision' ? t('sim.headOn') :
+                         cr.reason === 'mutex_zone' ? t('sim.mutexZone') :
+                         cr.reason === 'deadlock_prevention' ? t('sim.deadlockPrevention') : t('sim.resourceCompetition')}
                         <span className="text-gray-300">·</span>
-                        路段 {cr.edgeId}
+                        {t('sim.edge')} {cr.edgeId}
                       </div>
                     </div>
                   ))}
@@ -841,12 +819,12 @@ export default function SimulationPage() {
               <div className="p-3 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/60 rounded-[var(--radius-lg)]">
                 <div className="text-xs text-orange-700 font-medium flex items-center gap-1.5">
                   <Zap size={12} />
-                  动态调度模式 (RCS)
+                  {t('sim.rcsMode')}
                 </div>
                 <div className="mt-1.5 flex items-center gap-3 text-[10px] text-orange-600">
-                  <span>模板 {enabledTemplates.size}/{taskTemplates.length}</span>
+                  <span>{t('sim.templates')} {enabledTemplates.size}/{taskTemplates.length}</span>
                   <span className="w-px h-2.5 bg-orange-200" />
-                  <span>冲突 {conflictResolutions.length} 次</span>
+                  <span>{t('sim.conflicts')} {conflictResolutions.length} {t('sim.times')}</span>
                 </div>
               </div>
             )}
@@ -871,13 +849,12 @@ export default function SimulationPage() {
               if (status === 'idle' || !engineRef.current) return
               const rect = e.currentTarget.getBoundingClientRect()
               const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-              // Can't seek in current engine, but show visual feedback
             }}
             role="progressbar"
             aria-valuenow={Math.round(progress * 100)}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label="仿真进度"
+            aria-label={t('sim.progress')}
           >
             <div
               className="h-full bg-accent rounded-full transition-all duration-300"

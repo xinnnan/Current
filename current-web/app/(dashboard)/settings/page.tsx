@@ -1,26 +1,33 @@
+'use client'
+
+import { useTranslation } from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/shared/language-switcher'
+
 export default function SettingsPage() {
+  const { t } = useTranslation()
+
   return (
     <div className="p-6 max-w-2xl">
-      <h1 className="text-xl font-semibold mb-6">设置</h1>
+      <h1 className="text-xl font-semibold mb-6">{t('settings.title')}</h1>
 
       <div className="space-y-6">
         {/* API Keys */}
         <section className="bg-panel-bg border border-panel-border rounded-lg p-5">
-          <h2 className="text-sm font-medium mb-4">API 密钥配置</h2>
+          <h2 className="text-sm font-medium mb-4">{t('settings.apiKeys')}</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs text-muted mb-1">MiniMax API Key</label>
+              <label className="block text-xs text-muted mb-1">{t('settings.minimaxKey')}</label>
               <input
                 type="password"
-                placeholder="输入 MiniMax M2.7-highspeed API Key"
+                placeholder={t('settings.minimaxPlaceholder')}
                 className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
             <div>
-              <label className="block text-xs text-muted mb-1">Tripo3D API Key</label>
+              <label className="block text-xs text-muted mb-1">{t('settings.tripoKey')}</label>
               <input
                 type="password"
-                placeholder="输入 Tripo3D API Key"
+                placeholder={t('settings.tripoPlaceholder')}
                 className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
@@ -29,9 +36,9 @@ export default function SettingsPage() {
 
         {/* Inference Service */}
         <section className="bg-panel-bg border border-panel-border rounded-lg p-5">
-          <h2 className="text-sm font-medium mb-4">推理服务</h2>
+          <h2 className="text-sm font-medium mb-4">{t('settings.inferenceService')}</h2>
           <div>
-            <label className="block text-xs text-muted mb-1">Python 微服务地址</label>
+            <label className="block text-xs text-muted mb-1">{t('settings.pythonServiceUrl')}</label>
             <input
               type="text"
               placeholder="http://localhost:8000"
@@ -42,21 +49,25 @@ export default function SettingsPage() {
 
         {/* Preferences */}
         <section className="bg-panel-bg border border-panel-border rounded-lg p-5">
-          <h2 className="text-sm font-medium mb-4">偏好设置</h2>
+          <h2 className="text-sm font-medium mb-4">{t('settings.preferences')}</h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm">默认速度单位</span>
+              <span className="text-sm">{t('settings.speedUnit')}</span>
               <select className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md">
                 <option>m/s</option>
                 <option>km/h</option>
               </select>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm">默认距离单位</span>
+              <span className="text-sm">{t('settings.distanceUnit')}</span>
               <select className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md">
-                <option>米 (m)</option>
-                <option>毫米 (mm)</option>
+                <option>{t('settings.meters')}</option>
+                <option>{t('settings.millimeters')}</option>
               </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">{t('settings.language')}</span>
+              <LanguageSwitcher />
             </div>
           </div>
         </section>

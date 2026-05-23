@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ListTodo, Plus, Trash2, GripVertical, ChevronDown, ChevronRight } from 'lucide-react'
 import type { TaskTemplate } from '@/lib/simulation/rcs-scheduler'
 import { DEFAULT_TASK_TEMPLATES } from '@/lib/simulation/rcs-scheduler'
+import { useTranslation } from '@/lib/i18n'
 
 interface TaskTemplatePanelProps {
   templates: TaskTemplate[]
@@ -12,20 +13,6 @@ interface TaskTemplatePanelProps {
   onUpdateTemplate: (template: TaskTemplate) => void
   onAddTemplate: (template: TaskTemplate) => void
   onRemoveTemplate: (templateId: string) => void
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  transport: '搬运',
-  charge: '充电',
-  park: '归位',
-  patrol: '巡检',
-}
-
-const TYPE_COLORS: Record<string, string> = {
-  transport: 'bg-blue-100 text-blue-700',
-  charge: 'bg-green-100 text-green-700',
-  park: 'bg-gray-100 text-gray-700',
-  patrol: 'bg-purple-100 text-purple-700',
 }
 
 export function TaskTemplatePanel({
@@ -37,12 +24,27 @@ export function TaskTemplatePanel({
   onRemoveTemplate,
 }: TaskTemplatePanelProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { t } = useTranslation()
+
+  const TYPE_LABELS: Record<string, string> = {
+    transport: t('task.transport'),
+    charge: t('task.charge'),
+    park: t('task.park'),
+    patrol: t('task.patrol'),
+  }
+
+  const TYPE_COLORS: Record<string, string> = {
+    transport: 'bg-blue-100 text-blue-700',
+    charge: 'bg-green-100 text-green-700',
+    park: 'bg-gray-100 text-gray-700',
+    patrol: 'bg-purple-100 text-purple-700',
+  }
 
   const handleAddCustom = () => {
     const id = `tpl_custom_${Date.now()}`
     const newTemplate: TaskTemplate = {
       id,
-      name: '自定义任务',
+      name: t('task.customTask'),
       type: 'transport',
       description: '',
       priority: 5,
@@ -62,14 +64,14 @@ export function TaskTemplatePanel({
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-medium text-muted flex items-center gap-1.5">
           <ListTodo size={12} />
-          任务模板编排
+          {t('task.title')}
         </h4>
         <button
           onClick={handleAddCustom}
           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-accent/10 text-accent rounded hover:bg-accent/20 transition-colors"
         >
           <Plus size={10} />
-          添加模板
+          {t('task.addTemplate')}
         </button>
       </div>
 
@@ -123,7 +125,7 @@ export function TaskTemplatePanel({
               {isExpanded && (
                 <div className="px-2 pb-2 space-y-2 border-t border-gray-100 pt-2">
                   <div>
-                    <label className="text-[10px] text-muted block mb-0.5">名称</label>
+                    <label className="text-[10px] text-muted block mb-0.5">{t('task.name')}</label>
                     <input
                       type="text"
                       value={template.name}
@@ -133,7 +135,7 @@ export function TaskTemplatePanel({
                   </div>
 
                   <div>
-                    <label className="text-[10px] text-muted block mb-0.5">描述</label>
+                    <label className="text-[10px] text-muted block mb-0.5">{t('task.description')}</label>
                     <input
                       type="text"
                       value={template.description}
@@ -144,7 +146,7 @@ export function TaskTemplatePanel({
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-muted block mb-0.5">优先级 (1-10)</label>
+                      <label className="text-[10px] text-muted block mb-0.5">{t('task.priority')}</label>
                       <input
                         type="number"
                         min={1}
@@ -155,16 +157,16 @@ export function TaskTemplatePanel({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted block mb-0.5">类型</label>
+                      <label className="text-[10px] text-muted block mb-0.5">{t('task.type')}</label>
                       <select
                         value={template.type}
                         onChange={(e) => onUpdateTemplate({ ...template, type: e.target.value as TaskTemplate['type'] })}
                         className="w-full px-2 py-1 text-xs border border-gray-200 rounded bg-white"
                       >
-                        <option value="transport">搬运</option>
-                        <option value="charge">充电</option>
-                        <option value="park">归位</option>
-                        <option value="patrol">巡检</option>
+                        <option value="transport">{t('task.transport')}</option>
+                        <option value="charge">{t('task.charge')}</option>
+                        <option value="park">{t('task.park')}</option>
+                        <option value="patrol">{t('task.patrol')}</option>
                       </select>
                     </div>
                   </div>
@@ -172,7 +174,7 @@ export function TaskTemplatePanel({
                   {template.type === 'transport' && (
                     <div>
                       <label className="text-[10px] text-muted block mb-0.5">
-                        频率 (tasks/h): {template.config.frequency ?? '--'}
+                        {t('task.frequency')}: {template.config.frequency ?? '--'}
                       </label>
                       <input
                         type="range"
@@ -191,7 +193,7 @@ export function TaskTemplatePanel({
 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-muted block mb-0.5">取货等待 (s)</label>
+                      <label className="text-[10px] text-muted block mb-0.5">{t('task.pickupWait')}</label>
                       <input
                         type="number"
                         value={template.config.dwellTimePickup ?? 15}
@@ -203,7 +205,7 @@ export function TaskTemplatePanel({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted block mb-0.5">放货等待 (s)</label>
+                      <label className="text-[10px] text-muted block mb-0.5">{t('task.deliveryWait')}</label>
                       <input
                         type="number"
                         value={template.config.dwellTimeDelivery ?? 15}
@@ -219,7 +221,7 @@ export function TaskTemplatePanel({
                   {/* Dependencies */}
                   <div>
                     <label className="text-[10px] text-muted block mb-0.5">
-                      依赖任务 {template.dependencies.length > 0 && `(${template.dependencies.length})`}
+                      {t('task.dependencies')} {template.dependencies.length > 0 && `(${template.dependencies.length})`}
                     </label>
                     <div className="flex flex-wrap gap-1">
                       {DEFAULT_TASK_TEMPLATES
@@ -254,7 +256,7 @@ export function TaskTemplatePanel({
 
       {/* Info */}
       <div className="p-2 bg-blue-50 rounded text-[10px] text-blue-700">
-        <p>启用模板后，仿真引擎将按频率和优先级自动生成任务。依赖关系确保任务按序执行。</p>
+        <p>{t('task.info')}</p>
       </div>
     </div>
   )

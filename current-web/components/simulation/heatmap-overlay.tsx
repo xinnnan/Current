@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
+import { useTranslation } from '@/lib/i18n'
 
 export interface HeatmapEdge {
   edgeId: string
@@ -23,13 +24,11 @@ interface HeatmapOverlayProps {
 function congestionColor(value: number): string {
   const v = Math.max(0, Math.min(1, value))
   if (v < 0.5) {
-    // Green → Yellow
     const t = v * 2
     const r = Math.round(255 * t)
     const g = 255
     return `rgba(${r}, ${g}, 0, 0.7)`
   } else {
-    // Yellow → Red
     const t = (v - 0.5) * 2
     const r = 255
     const g = Math.round(255 * (1 - t))
@@ -61,16 +60,14 @@ export function HeatmapOverlay({
     for (const edge of edges) {
       const color = congestionColor(edge.congestion)
 
-      // Draw edge line with congestion color
       ctx.beginPath()
       ctx.moveTo(edge.fromX, edge.fromY)
       ctx.lineTo(edge.toX, edge.toY)
       ctx.strokeStyle = color
-      ctx.lineWidth = 4 + edge.congestion * 6  // Thicker for higher congestion
+      ctx.lineWidth = 4 + edge.congestion * 6
       ctx.lineCap = 'round'
       ctx.stroke()
 
-      // Draw glow effect
       ctx.beginPath()
       ctx.moveTo(edge.fromX, edge.fromY)
       ctx.lineTo(edge.toX, edge.toY)
@@ -80,7 +77,6 @@ export function HeatmapOverlay({
       ctx.stroke()
       ctx.globalAlpha = opacity
 
-      // Draw congestion label
       if (showLabels && edge.congestion > 0.1) {
         const midX = (edge.fromX + edge.toX) / 2
         const midY = (edge.fromY + edge.toY) / 2
@@ -90,7 +86,6 @@ export function HeatmapOverlay({
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
 
-        // Background
         const metrics = ctx.measureText(label)
         const padding = 3
         ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
@@ -101,7 +96,6 @@ export function HeatmapOverlay({
           12 + padding * 2
         )
 
-        // Text
         ctx.fillStyle = '#ffffff'
         ctx.fillText(label, midX, midY)
       }
@@ -129,9 +123,11 @@ export function HeatmapOverlay({
 
 // Legend component for the heatmap
 export function HeatmapLegend() {
+  const { t } = useTranslation()
+
   return (
     <div className="flex items-center gap-2 text-xs text-muted">
-      <span>畅通</span>
+      <span>{t('heatmap.smooth')}</span>
       <div className="flex h-2.5 w-32 rounded overflow-hidden">
         {Array.from({ length: 20 }, (_, i) => {
           const v = i / 19
@@ -144,7 +140,7 @@ export function HeatmapLegend() {
           )
         })}
       </div>
-      <span>拥堵</span>
+      <span>{t('heatmap.congested')}</span>
     </div>
   )
 }
