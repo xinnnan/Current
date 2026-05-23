@@ -2,71 +2,54 @@
 
 import { useTranslation } from '@/lib/i18n'
 import { LanguageSwitcher } from '@/components/shared/language-switcher'
+import { useUnitStore, type UnitSystem } from '@/lib/units/store'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
+  const { unitSystem, setUnitSystem } = useUnitStore()
+
+  const unitOptions: { value: UnitSystem; label: string }[] = [
+    { value: 'metric', label: t('settings.metric') },
+    { value: 'imperial', label: t('settings.imperial') },
+    { value: 'us_customary', label: t('settings.usCustomary') },
+  ]
 
   return (
     <div className="p-6 max-w-2xl">
       <h1 className="text-xl font-semibold mb-6">{t('settings.title')}</h1>
 
       <div className="space-y-6">
-        {/* API Keys */}
-        <section className="bg-panel-bg border border-panel-border rounded-lg p-5">
-          <h2 className="text-sm font-medium mb-4">{t('settings.apiKeys')}</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-muted mb-1">{t('settings.minimaxKey')}</label>
-              <input
-                type="password"
-                placeholder={t('settings.minimaxPlaceholder')}
-                className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-muted mb-1">{t('settings.tripoKey')}</label>
-              <input
-                type="password"
-                placeholder={t('settings.tripoPlaceholder')}
-                className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Inference Service */}
-        <section className="bg-panel-bg border border-panel-border rounded-lg p-5">
-          <h2 className="text-sm font-medium mb-4">{t('settings.inferenceService')}</h2>
-          <div>
-            <label className="block text-xs text-muted mb-1">{t('settings.pythonServiceUrl')}</label>
-            <input
-              type="text"
-              placeholder="http://localhost:8000"
-              className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
-            />
-          </div>
-        </section>
-
         {/* Preferences */}
         <section className="bg-panel-bg border border-panel-border rounded-lg p-5">
           <h2 className="text-sm font-medium mb-4">{t('settings.preferences')}</h2>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">{t('settings.speedUnit')}</span>
-              <select className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md">
-                <option>m/s</option>
-                <option>km/h</option>
-              </select>
+          <div className="space-y-4">
+            {/* Unit System */}
+            <div>
+              <label className="block text-sm mb-1.5">{t('settings.unitSystem')}</label>
+              <p className="text-xs text-muted mb-2">{t('settings.unitSystemDesc')}</p>
+              <div className="flex gap-2">
+                {unitOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setUnitSystem(opt.value)}
+                    className={`px-3 py-1.5 text-sm rounded-md border transition-colors duration-[var(--transition-fast)] ${
+                      unitSystem === opt.value
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-gray-50 border-gray-200 text-foreground hover:border-accent/40'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">{t('settings.distanceUnit')}</span>
-              <select className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md">
-                <option>{t('settings.meters')}</option>
-                <option>{t('settings.millimeters')}</option>
-              </select>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">{t('settings.language')}</span>
+
+            {/* Language */}
+            <div className="flex items-center justify-between pt-2">
+              <div>
+                <span className="text-sm">{t('settings.language')}</span>
+                <p className="text-xs text-muted">{t('settings.languageDesc')}</p>
+              </div>
               <LanguageSwitcher />
             </div>
           </div>

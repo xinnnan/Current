@@ -3,6 +3,8 @@
 import { useState, useCallback } from 'react'
 import { Ruler, Check, X, RotateCcw } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
+import { useUnitStore } from '@/lib/units/store'
+import { distanceLabel, displayToMeters, metersToDisplay } from '@/lib/units'
 
 export interface CalibrationData {
   pointA: { x: number; y: number } | null
@@ -32,6 +34,9 @@ export function CalibrationWizard({
   const [tempPointA, setTempPointA] = useState<{ x: number; y: number } | null>(null)
   const [tempPointB, setTempPointB] = useState<{ x: number; y: number } | null>(null)
   const { t } = useTranslation()
+  const { unitSystem } = useUnitStore()
+
+  const unitLbl = distanceLabel(unitSystem)
 
   const startCalibration = useCallback(() => {
     setStep('draw_line')
@@ -69,20 +74,23 @@ export function CalibrationWizard({
     const dx = tempPointB.x - tempPointA.x
     const dy = tempPointB.y - tempPointA.y
     const pixelDist = Math.sqrt(dx * dx + dy * dy)
-    const realDist = parseFloat(realDistance)
+    const displayDist = parseFloat(realDistance)
 
-    if (pixelDist <= 0 || realDist <= 0) return
+    if (pixelDist <= 0 || displayDist <= 0) return
+
+    // Convert user input from display units → meters
+    const realDistM = displayToMeters(displayDist, unitSystem)
 
     onCalibrationChange({
       pointA: tempPointA,
       pointB: tempPointB,
       pixelDistance: pixelDist,
-      realDistanceM: realDist,
-      pixelsPerMeter: pixelDist / realDist,
+      realDistanceM: realDistM,
+      pixelsPerMeter: pixelDist / realDistM,
     })
     setStep('completed')
     onCalibrationModeChange(false)
-  }, [tempPointA, tempPointB, realDistance, onCalibrationChange, onCalibrationModeChange])
+  }, [tempPointA, tempPointB, realDistance, unitSystem, onCalibrationChange, onCalibrationModeChange])
 
   const pixelDistance = (() => {
     if (!tempPointA || !tempPointB) return 0
@@ -120,7 +128,7 @@ export function CalibrationWizard({
               {t('calibration.calibrated')}
             </div>
             <div className="space-y-1 text-xs text-green-600">
-              <div>{t('calibration.realDistance')}: {calibration.realDistanceM} m</div>
+              <div>{t('calibration.realDistance')}: {metersToDisplay(calibration.realDistanceM, unitSystem).toFixed(2)} {unitLbl}</div>
               <div>{t('calibration.pixelDistance')}: {Math.round(calibration.pixelDistance)} px</div>
               <div className="font-medium">
                 {t('calibration.scale')}: {calibration.pixelsPerMeter.toFixed(2)} px/m
@@ -173,7 +181,7 @@ export function CalibrationWizard({
                 className="flex-1 px-2 py-1.5 text-xs border border-blue-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-accent"
                 autoFocus
               />
-              <span className="text-xs text-blue-600">{t('calibration.meters')}</span>
+              <span className="text-xs text-blue-600">{unitLbl}</span>
             </div>
             <div className="flex gap-2">
               <button

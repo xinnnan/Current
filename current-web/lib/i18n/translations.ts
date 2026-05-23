@@ -188,20 +188,25 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // ── Settings Page ──
     'settings.title': 'Settings',
-    'settings.apiKeys': 'API Key Configuration',
-    'settings.minimaxKey': 'MiniMax API Key',
-    'settings.minimaxPlaceholder': 'Enter MiniMax M2.7-highspeed API Key',
-    'settings.tripoKey': 'Tripo3D API Key',
-    'settings.tripoPlaceholder': 'Enter Tripo3D API Key',
-    'settings.inferenceService': 'Inference Service',
-    'settings.pythonServiceUrl': 'Python Microservice URL',
     'settings.preferences': 'Preferences',
-    'settings.speedUnit': 'Default Speed Unit',
-    'settings.distanceUnit': 'Default Distance Unit',
-    'settings.meters': 'Meters (m)',
-    'settings.millimeters': 'Millimeters (mm)',
+    'settings.unitSystem': 'Unit System',
+    'settings.unitSystemDesc': 'Select measurement unit system for distance and speed',
+    'settings.metric': 'Metric (m, m/s)',
+    'settings.imperial': 'Imperial (ft, ft/s)',
+    'settings.usCustomary': 'US Customary (in, in/s)',
     'settings.language': 'Language',
     'settings.languageDesc': 'Select interface language',
+
+    // ── New Project Dialog ──
+    'project.newTitle': 'New Project',
+    'project.name': 'Project Name',
+    'project.namePlaceholder': 'e.g. Warehouse A Phase 1',
+    'project.description': 'Description',
+    'project.descPlaceholder': 'Optional project description...',
+    'project.creating': 'Creating...',
+    'project.create': 'Create Project',
+    'project.cancel': 'Cancel',
+    'project.nameRequired': 'Project name is required',
 
     // ── Layer Manager ──
     'layer.baseMap': 'Base Map',
@@ -479,20 +484,25 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // ── 设置页 ──
     'settings.title': '设置',
-    'settings.apiKeys': 'API 密钥配置',
-    'settings.minimaxKey': 'MiniMax API Key',
-    'settings.minimaxPlaceholder': '输入 MiniMax M2.7-highspeed API Key',
-    'settings.tripoKey': 'Tripo3D API Key',
-    'settings.tripoPlaceholder': '输入 Tripo3D API Key',
-    'settings.inferenceService': '推理服务',
-    'settings.pythonServiceUrl': 'Python 微服务地址',
     'settings.preferences': '偏好设置',
-    'settings.speedUnit': '默认速度单位',
-    'settings.distanceUnit': '默认距离单位',
-    'settings.meters': '米 (m)',
-    'settings.millimeters': '毫米 (mm)',
+    'settings.unitSystem': '单位系统',
+    'settings.unitSystemDesc': '选择距离和速度的度量单位系统',
+    'settings.metric': '公制 (m, m/s)',
+    'settings.imperial': '英制 (ft, ft/s)',
+    'settings.usCustomary': '美制 (in, in/s)',
     'settings.language': '语言',
     'settings.languageDesc': '选择界面语言',
+
+    // ── 新建项目对话框 ──
+    'project.newTitle': '新建项目',
+    'project.name': '项目名称',
+    'project.namePlaceholder': '例如：仓库 A 一期工程',
+    'project.description': '描述',
+    'project.descPlaceholder': '可选的项目描述...',
+    'project.creating': '创建中...',
+    'project.create': '创建项目',
+    'project.cancel': '取消',
+    'project.nameRequired': '项目名称不能为空',
 
     // ── 图层管理 ──
     'layer.baseMap': '底图',
