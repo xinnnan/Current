@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Ruler, Check, X, RotateCcw } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
 import { useUnitStore } from '@/lib/units/store'
@@ -65,6 +65,24 @@ export function CalibrationWizard({
   const [tempPointB, setTempPointB] = useState<{ x: number; y: number } | null>(null)
   const { t } = useTranslation()
   const { unitSystem } = useUnitStore()
+
+  // Watch for calibration prop changes from map-editor clicks
+  // When two points are set but no distance yet → transition to step 2
+  const prevCalibRef = useRef<CalibrationData | null>(null)
+  useEffect(() => {
+    if (
+      calibration &&
+      calibration.pointA &&
+      calibration.pointB &&
+      calibration.realDistanceM === 0 &&
+      prevCalibRef.current !== calibration
+    ) {
+      setTempPointA(calibration.pointA)
+      setTempPointB(calibration.pointB)
+      setStep('input_distance')
+    }
+    prevCalibRef.current = calibration
+  }, [calibration])
 
   // Default calibration unit based on user's unit system preference
   const getDefaultUnit = (): CalibUnit => {

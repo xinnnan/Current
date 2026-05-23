@@ -41,6 +41,7 @@ export interface MapEditorRef {
   getCanvas: () => Canvas | null
   getPlacedAssets: () => PlacedAsset[]
   loadImageFromUrl: (url: string) => void
+  resetCalibState: () => void
 }
 
 const ASSET_COLORS: Record<string, string> = {
@@ -88,6 +89,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
   const calibPointA = useRef<{ x: number; y: number } | null>(null)
   const calibPreviewLine = useRef<Line | null>(null)
   const calibCursorCircle = useRef<Circle | null>(null)
+  const calibComplete = useRef(false) // Block further clicks after 2 points
 
   // Line drawing state
   const lineStartPoint = useRef<{ x: number; y: number } | null>(null)
@@ -119,6 +121,22 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
         canvas.sendObjectToBack(img)
         canvas.renderAll()
       }).catch(() => { /* ignore failed image load */ })
+    },
+    resetCalibState: () => {
+      calibComplete.current = false
+      calibPointA.current = null
+      const canvas = fabricRef.current
+      if (canvas) {
+        if (calibCursorCircle.current) {
+          canvas.remove(calibCursorCircle.current)
+          calibCursorCircle.current = null
+        }
+        if (calibPreviewLine.current) {
+          canvas.remove(calibPreviewLine.current)
+          calibPreviewLine.current = null
+        }
+        canvas.renderAll()
+      }
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [])
@@ -177,13 +195,16 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
 
       // Calibrate tool
       if (tool === 'calibrate') {
+        // Block clicks after two points are placed (waiting for distance input)
+        if (calibComplete.current) return
+
         if (!calibPointA.current) {
           calibPointA.current = { x: pointer.x, y: pointer.y }
           const markerA = new Circle({
-            left: pointer.x - 6,
-            top: pointer.y - 6,
-            radius: 6,
-            fill: 'rgba(234, 179, 8, 0.8)',
+            left: pointer.x - 4,
+            top: pointer.y - 4,
+            radius: 4,
+            fill: 'rgba(234, 179, 8, 0.9)',
             stroke: '#ca8a04',
             strokeWidth: 2,
             selectable: false,
@@ -198,11 +219,17 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
             calibPreviewLine.current = null
           }
 
+          // Remove cursor circle
+          if (calibCursorCircle.current) {
+            canvas.remove(calibCursorCircle.current)
+            calibCursorCircle.current = null
+          }
+
           const markerB = new Circle({
-            left: pointer.x - 6,
-            top: pointer.y - 6,
-            radius: 6,
-            fill: 'rgba(234, 179, 8, 0.8)',
+            left: pointer.x - 4,
+            top: pointer.y - 4,
+            radius: 4,
+            fill: 'rgba(234, 179, 8, 0.9)',
             stroke: '#ca8a04',
             strokeWidth: 2,
             selectable: false,
@@ -226,6 +253,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
             pointB: { x: pointer.x, y: pointer.y },
           })
           calibPointA.current = null
+          calibComplete.current = true // Block further clicks until wizard resets
         }
         return
       }
@@ -326,12 +354,12 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       // Calibration: precision circle cursor
       if (tool === 'calibrate') {
         if (calibCursorCircle.current) {
-          calibCursorCircle.current.set({ left: pointer.x - 10, top: pointer.y - 10 })
+          calibCursorCircle.current.set({ left: pointer.x - 4, top: pointer.y - 4 })
         } else {
           calibCursorCircle.current = new Circle({
-            left: pointer.x - 10,
-            top: pointer.y - 10,
-            radius: 10,
+            left: pointer.x - 4,
+            top: pointer.y - 4,
+            radius: 4,
             fill: 'transparent',
             stroke: 'rgba(234, 179, 8, 0.6)',
             strokeWidth: 1.5,
@@ -456,6 +484,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     // Reset drawing states
     lineStartPoint.current = null
     calibPointA.current = null
+    calibComplete.current = false
     polygonPoints.current = []
 
     // Clean up calibration cursor objects

@@ -525,7 +525,10 @@ export default function MapPage() {
             onCalibrationChange={handleCalibrationChange}
             onCalibrationModeChange={(active) => {
               setIsCalibrating(active)
-              if (active) setActiveTool('calibrate')
+              if (active) {
+                editorRef.current?.resetCalibState()
+                setActiveTool('calibrate')
+              }
             }}
             isCalibrating={isCalibrating}
           />
