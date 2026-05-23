@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Play, Pause, FastForward, BarChart3, Settings,
   RotateCcw, Truck, Clock, Activity, AlertTriangle, Zap,
@@ -18,6 +19,7 @@ import { AGVAnimator } from '@/components/scene-3d/agv-animator'
 import { ViewModeSwitcher } from '@/components/shared/view-mode-switcher'
 import { useViewStore } from '@/lib/stores/view-store'
 import { useTranslation } from '@/lib/i18n'
+import { useProjectStore } from '@/lib/project-store'
 
 type SimStatus = 'idle' | 'running' | 'paused' | 'completed'
 
@@ -53,6 +55,57 @@ const DEMO_EDGES = [
 
 export default function SimulationPage() {
   const { t } = useTranslation()
+  const searchParams = useSearchParams()
+  const projectId = searchParams.get('project')
+  const { setCurrentProject } = useProjectStore()
+
+  // Simulation record from database
+  const [simRecordId, setSimRecordId] = useState<string | null>(null)
+
+  // Load or create simulation record on mount
+  useEffect(() => {
+    if (!projectId) return
+    setCurrentProject(projectId, '')
+
+    const initSim = async () => {
+      try {
+        // Try to load existing simulations for this project
+        const res = await fetch(`/api/simulations?project_id=${projectId}`)
+        if (res.ok) {
+          const data = await res.json()
+          const sims = data.simulations || []
+          if (sims.length > 0) {
+            setSimRecordId(sims[0].id)
+            // Restore config if available
+            const config = sims[0].config as Record<string, unknown> | null
+            if (config) {
+              if (config.mode) setMode(config.mode as 'lightweight' | 'dynamic')
+              if (config.speed_multiplier) setSpeedMultiplier(config.speed_multiplier as number)
+              if (config.duration_s) setDuration(config.duration_s as number)
+              if (config.agv_count) setAgvCount(config.agv_count as number)
+              if (config.tasks_per_hour) setTasksPerHour(config.tasks_per_hour as number)
+            }
+          } else {
+            // Create a new simulation record
+            const createRes = await fetch('/api/simulations', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                project_id: projectId,
+                name: 'Simulation 1',
+                config: { mode: 'lightweight', speed_multiplier: 1, duration_s: 3600, agv_count: 3, tasks_per_hour: 20 },
+              }),
+            })
+            if (createRes.ok) {
+              const createData = await createRes.json()
+              setSimRecordId(createData.simulation.id)
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    initSim()
+  }, [projectId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Simulation state
   const [status, setStatus] = useState<SimStatus>('idle')
@@ -79,6 +132,32 @@ export default function SimulationPage() {
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 500 })
   const viewMode = useViewStore((s) => s.viewMode)
+
+  // Save config changes to database
+  const saveConfig = useCallback(async () => {
+    if (!simRecordId) return
+    try {
+      await fetch(`/api/simulations/${simRecordId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: { mode, speed_multiplier: speedMultiplier, duration_s: duration, agv_count: agvCount, tasks_per_hour: tasksPerHour },
+        }),
+      })
+    } catch { /* ignore */ }
+  }, [simRecordId, mode, speedMultiplier, duration, agvCount, tasksPerHour])
+
+  // Save simulation results to database
+  const saveResults = useCallback(async (results: Record<string, unknown>) => {
+    if (!simRecordId) return
+    try {
+      await fetch(`/api/simulations/${simRecordId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ results, status: 'completed' }),
+      })
+    } catch { /* ignore */ }
+  }, [simRecordId])
 
   // Observe canvas container size
   useEffect(() => {
@@ -198,6 +277,7 @@ export default function SimulationPage() {
         setMetrics(finalMetrics)
         setStatus('completed')
         setProgress(1)
+        saveResults(finalMetrics as unknown as Record<string, unknown>)
         return
       }
 
@@ -240,6 +320,7 @@ export default function SimulationPage() {
           setMetrics(engine.getMetrics())
           setStatus('completed')
           setProgress(1)
+          saveResults(engine.getMetrics() as unknown as Record<string, unknown>)
           return
         }
 

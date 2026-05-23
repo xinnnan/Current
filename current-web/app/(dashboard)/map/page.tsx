@@ -24,6 +24,47 @@ interface MapRecord {
   scale_ratio: number
 }
 
+interface NodeRecord {
+  id: string
+  map_id: string
+  x: number
+  y: number
+  node_type: string
+  label: string | null
+  properties: Record<string, unknown>
+}
+
+interface EdgeRecord {
+  id: string
+  map_id: string
+  from_node_id: string
+  to_node_id: string
+  length: number | null
+  speed_limit: number
+  direction: string
+  constraints: Record<string, unknown>
+}
+
+interface ZoneRecord {
+  id: string
+  map_id: string
+  name: string | null
+  zone_type: string
+  polygon: Record<string, unknown>
+  rules: Record<string, unknown>
+}
+
+interface InstanceRecord {
+  id: string
+  asset_id: string
+  map_id: string
+  position_x: number
+  position_y: number
+  position_z: number
+  rotation: number
+  scale: number
+}
+
 export default function MapPage() {
   const { t } = useTranslation()
   const searchParams = useSearchParams()
@@ -35,12 +76,8 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true)
 
   // Layer state
-  const [layers, setLayers] = useState<LayerItem[]>([
-    { id: 'base', name: t('map.baseLayer'), type: 'base_map', visible: true, locked: false, opacity: 1, zIndex: 0, objectCount: 0 },
-    { id: 'constraint', name: t('map.constraintLayer'), type: 'constraint_zone', visible: true, locked: false, opacity: 0.8, zIndex: 1, objectCount: 0 },
-    { id: 'routing', name: t('map.routingLayer'), type: 'routing', visible: true, locked: false, opacity: 1, zIndex: 2, objectCount: 0 },
-  ])
-  const [activeLayerId, setActiveLayerId] = useState<string | null>('routing')
+  const [layers, setLayers] = useState<LayerItem[]>([])
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
   const [activeTool, setActiveTool] = useState<EditorTool>('select')
 
   // Calibration state
@@ -59,14 +96,21 @@ export default function MapPage() {
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([])
   const [showAssetPicker, setShowAssetPicker] = useState(false)
 
+  // Route data (nodes/edges) for stats
+  const [nodeCount, setNodeCount] = useState(0)
+  const [edgeCount, setEdgeCount] = useState(0)
+
   const editorRef = useRef<MapEditorRef>(null)
 
-  // ── Load or create map record for the project ──
+  // ── Load or create map record + all related data ──
   useEffect(() => {
     if (!projectId) {
       setLoading(false)
       return
     }
+
+    // Set current project in store
+    setCurrentProject(projectId, '')
 
     const initMap = async () => {
       try {
@@ -76,29 +120,10 @@ export default function MapPage() {
           const data = await res.json()
           const maps = data.maps || []
 
+          let currentMap: MapRecord
+
           if (maps.length > 0) {
-            // Use existing map
-            const existingMap = maps[0] as MapRecord
-            setMapRecord(existingMap)
-
-            // Restore calibration if exists
-            const calib = existingMap.calibration as Record<string, unknown>
-            if (calib && calib.point_a && calib.point_b && calib.real_distance_m) {
-              const pointA = calib.point_a as [number, number]
-              const pointB = calib.point_b as [number, number]
-              const dx = pointB[0] - pointA[0]
-              const dy = pointB[1] - pointA[1]
-              const pixelDist = Math.sqrt(dx * dx + dy * dy)
-              const realDistM = calib.real_distance_m as number
-
-              setCalibration({
-                pointA: { x: pointA[0], y: pointA[1] },
-                pointB: { x: pointB[0], y: pointB[1] },
-                pixelDistance: pixelDist,
-                realDistanceM: realDistM,
-                pixelsPerMeter: pixelDist / realDistM,
-              })
-            }
+            currentMap = maps[0] as MapRecord
           } else {
             // Create new map for this project
             const createRes = await fetch('/api/maps', {
@@ -111,8 +136,111 @@ export default function MapPage() {
             })
             if (createRes.ok) {
               const createData = await createRes.json()
-              setMapRecord(createData.map)
+              currentMap = createData.map
+            } else {
+              setLoading(false)
+              return
             }
+          }
+
+          setMapRecord(currentMap)
+
+          // Set project name from map
+          setCurrentProject(projectId, currentMap.name || 'Project')
+
+          // Restore calibration if exists
+          const calib = currentMap.calibration as Record<string, unknown>
+          if (calib && calib.point_a && calib.point_b && calib.real_distance_m) {
+            const pointA = calib.point_a as [number, number]
+            const pointB = calib.point_b as [number, number]
+            const dx = pointB[0] - pointA[0]
+            const dy = pointB[1] - pointA[1]
+            const pixelDist = Math.sqrt(dx * dx + dy * dy)
+            const realDistM = calib.real_distance_m as number
+
+            setCalibration({
+              pointA: { x: pointA[0], y: pointA[1] },
+              pointB: { x: pointB[0], y: pointB[1] },
+              pixelDistance: pixelDist,
+              realDistanceM: realDistM,
+              pixelsPerMeter: pixelDist / realDistM,
+            })
+          }
+
+          // Load layers from database
+          try {
+            const layersRes = await fetch(`/api/map-layers?map_id=${currentMap.id}`)
+            if (layersRes.ok) {
+              const layersData = await layersRes.json()
+              const dbLayers = layersData.layers as { id: string; name: string; type: string; z_index: number; visible: boolean; locked: boolean; opacity: number }[]
+              if (dbLayers.length > 0) {
+                const loadedLayers: LayerItem[] = dbLayers.map(l => ({
+                  id: l.id,
+                  name: l.name,
+                  type: l.type as LayerItem['type'],
+                  visible: l.visible,
+                  locked: l.locked,
+                  opacity: l.opacity,
+                  zIndex: l.z_index,
+                  objectCount: 0,
+                }))
+                setLayers(loadedLayers)
+                setActiveLayerId(loadedLayers[0]?.id || null)
+              } else {
+                // Create default layers
+                await initDefaultLayers(currentMap.id)
+              }
+            }
+          } catch {
+            await initDefaultLayers(currentMap.id)
+          }
+
+          // Load route nodes
+          try {
+            const nodesRes = await fetch(`/api/route-nodes?map_id=${currentMap.id}`)
+            if (nodesRes.ok) {
+              const nodesData = await nodesRes.json()
+              setNodeCount((nodesData.nodes || []).length)
+            }
+          } catch { /* ignore */ }
+
+          // Load route edges
+          try {
+            const edgesRes = await fetch(`/api/route-edges?map_id=${currentMap.id}`)
+            if (edgesRes.ok) {
+              const edgesData = await edgesRes.json()
+              setEdgeCount((edgesData.edges || []).length)
+            }
+          } catch { /* ignore */ }
+
+          // Load placed assets (asset instances)
+          try {
+            const instancesRes = await fetch(`/api/asset-instances?map_id=${currentMap.id}`)
+            if (instancesRes.ok) {
+              const instancesData = await instancesRes.json()
+              const instances = (instancesData.instances || []) as InstanceRecord[]
+              const placed: PlacedAsset[] = instances.map(inst => ({
+                id: inst.id,
+                assetId: inst.asset_id,
+                name: `Asset ${inst.asset_id.slice(0, 6)}`,
+                x: inst.position_x,
+                y: inst.position_y,
+                rotation: inst.rotation,
+                width: 50,
+                height: 50,
+                category: 'other',
+              }))
+              setPlacedAssets(placed)
+            }
+          } catch { /* ignore */ }
+
+          // Restore base image if exists
+          if (currentMap.base_image_url) {
+            // The editor will load the image via importFile or direct URL
+            // We pass it through a custom method
+            setTimeout(() => {
+              editorRef.current?.loadImageFromUrl?.(currentMap.base_image_url!)
+            }, 500)
           }
         }
       } catch (err) {
@@ -123,7 +251,43 @@ export default function MapPage() {
     }
 
     initMap()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
+
+  // ── Initialize default layers ──
+  const initDefaultLayers = async (mapId: string) => {
+    const defaults = [
+      { name: t('map.baseLayer'), type: 'base_map' as const, zIndex: 0 },
+      { name: t('map.constraintLayer'), type: 'constraint_zone' as const, zIndex: 1 },
+      { name: t('map.routingLayer'), type: 'routing' as const, zIndex: 2 },
+    ]
+
+    const newLayers: LayerItem[] = []
+    for (const def of defaults) {
+      try {
+        const res = await fetch('/api/map-layers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ map_id: mapId, name: def.name, type: def.type, z_index: def.zIndex }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          newLayers.push({
+            id: data.layer.id,
+            name: data.layer.name,
+            type: data.layer.type,
+            visible: true,
+            locked: false,
+            opacity: 1,
+            zIndex: def.zIndex,
+            objectCount: 0,
+          })
+        }
+      } catch { /* ignore */ }
+    }
+    setLayers(newLayers)
+    setActiveLayerId(newLayers[2]?.id || newLayers[0]?.id || null)
+  }
 
   // ── Save calibration to database ──
   const saveCalibration = useCallback(async (calibData: CalibrationData | null) => {
@@ -149,28 +313,43 @@ export default function MapPage() {
   }, [mapRecord])
 
   // Layer management handlers
-  const handleAddLayer = useCallback((name: string, type: LayerItem['type']) => {
+  const handleAddLayer = useCallback(async (name: string, type: LayerItem['type']) => {
+    if (!mapRecord) return
     const maxZ = Math.max(...layers.map(l => l.zIndex), 0)
-    const newLayer: LayerItem = {
-      id: `layer_${Date.now()}`,
-      name,
-      type,
-      visible: true,
-      locked: false,
-      opacity: 1,
-      zIndex: maxZ + 1,
-      objectCount: 0,
-    }
-    setLayers(prev => [...prev, newLayer])
-    setActiveLayerId(newLayer.id)
-  }, [layers])
 
-  const handleDeleteLayer = useCallback((layerId: string) => {
-    setLayers(prev => prev.filter(l => l.id !== layerId))
+    try {
+      const res = await fetch('/api/map-layers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ map_id: mapRecord.id, name, type, z_index: maxZ + 1 }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const newLayer: LayerItem = {
+          id: data.layer.id,
+          name: data.layer.name,
+          type: data.layer.type,
+          visible: true,
+          locked: false,
+          opacity: 1,
+          zIndex: maxZ + 1,
+          objectCount: 0,
+        }
+        setLayers(prev => [...prev, newLayer])
+        setActiveLayerId(newLayer.id)
+      }
+    } catch { /* ignore */ }
+  }, [mapRecord, layers])
+
+  const handleDeleteLayer = useCallback(async (layerId: string) => {
+    try {
+      await fetch(`/api/map-layers/${layerId}`, { method: 'DELETE' })
+      setLayers(prev => prev.filter(l => l.id !== layerId))
+    } catch { /* ignore */ }
   }, [])
 
   // Handle tool actions from MapEditor
-  const handleToolAction = useCallback((action: string, data: Record<string, unknown>) => {
+  const handleToolAction = useCallback(async (action: string, data: Record<string, unknown>) => {
     if (action === 'calibration_points') {
       const pointA = data.pointA as { x: number; y: number }
       const pointB = data.pointB as { x: number; y: number }
@@ -192,8 +371,105 @@ export default function MapPage() {
       setPlacedAssets(prev => [...prev, placed])
       setPendingAsset(null)
       setActiveTool('select')
+
+      // Persist to database
+      if (mapRecord && placed.assetId) {
+        try {
+          await fetch('/api/asset-instances', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              project_id: projectId,
+              asset_id: placed.assetId,
+              map_id: mapRecord.id,
+              position_x: placed.x,
+              position_y: placed.y,
+              position_z: 0,
+              rotation: placed.rotation,
+              scale: 1,
+            }),
+          })
+        } catch { /* ignore */ }
+      }
+    } else if (action === 'node_added') {
+      // Persist route node to database
+      if (mapRecord) {
+        const x = data.x as number
+        const y = data.y as number
+        const label = data.label as string | undefined
+        try {
+          const res = await fetch('/api/route-nodes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ map_id: mapRecord.id, x, y, label, node_type: 'waypoint' }),
+          })
+          if (res.ok) {
+            setNodeCount(prev => prev + 1)
+          }
+        } catch { /* ignore */ }
+      }
+    } else if (action === 'edge_added') {
+      // Persist route edge to database
+      if (mapRecord) {
+        const fromNodeId = data.fromNodeId as string
+        const toNodeId = data.toNodeId as string
+        const length = data.length as number | undefined
+        try {
+          const res = await fetch('/api/route-edges', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              map_id: mapRecord.id,
+              from_node_id: fromNodeId,
+              to_node_id: toNodeId,
+              length,
+              speed_limit: 1.5,
+              direction: 'bidirectional',
+            }),
+          })
+          if (res.ok) {
+            setEdgeCount(prev => prev + 1)
+          }
+        } catch { /* ignore */ }
+      }
+    } else if (action === 'zone_added') {
+      // Persist constraint zone to database
+      if (mapRecord) {
+        const points = data.points as { x: number; y: number }[]
+        try {
+          await fetch('/api/constraint-zones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              map_id: mapRecord.id,
+              name: `Zone ${Date.now()}`,
+              zone_type: 'obstacle',
+              polygon: { points: points.map(p => [p.x, p.y]), type: 'polygon' },
+              rules: {},
+            }),
+          })
+        } catch { /* ignore */ }
+      }
+    } else if (action === 'base_image_imported') {
+      // Upload base image to Storage
+      if (mapRecord && data.file) {
+        const file = data.file as File
+        const width = data.width as number | undefined
+        const height = data.height as number | undefined
+        try {
+          const formData = new FormData()
+          formData.append('image', file)
+          if (width) formData.append('width', String(width))
+          if (height) formData.append('height', String(height))
+
+          await fetch(`/api/maps/${mapRecord.id}/upload-image`, {
+            method: 'POST',
+            body: formData,
+          })
+        } catch { /* ignore */ }
+      }
     }
-  }, [])
+  }, [mapRecord, projectId])
 
   // Handle calibration change (with save)
   const handleCalibrationChange = useCallback((data: CalibrationData | null) => {
@@ -418,11 +694,11 @@ export default function MapPage() {
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="p-2 bg-gray-50 rounded">
               <div className="text-muted">{t('map.nodes')}</div>
-              <div className="font-medium">0</div>
+              <div className="font-medium">{nodeCount}</div>
             </div>
             <div className="p-2 bg-gray-50 rounded">
               <div className="text-muted">{t('map.edges')}</div>
-              <div className="font-medium">0</div>
+              <div className="font-medium">{edgeCount}</div>
             </div>
             <div className="p-2 bg-gray-50 rounded">
               <div className="text-muted">{t('map.assets')}</div>

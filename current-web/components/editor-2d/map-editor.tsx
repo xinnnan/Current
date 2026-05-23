@@ -40,6 +40,7 @@ export interface MapEditorRef {
   importFile: () => void
   getCanvas: () => Canvas | null
   getPlacedAssets: () => PlacedAsset[]
+  loadImageFromUrl: (url: string) => void
 }
 
 const ASSET_COLORS: Record<string, string> = {
@@ -103,6 +104,22 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     importFile: handleFileImport,
     getCanvas: () => fabricRef.current,
     getPlacedAssets: () => [...placedAssetsRef.current],
+    loadImageFromUrl: (url: string) => {
+      const canvas = fabricRef.current
+      if (!canvas) return
+      FabricImage.fromURL(url).then((img) => {
+        const viewportWidth = canvas.getWidth()
+        const viewportHeight = canvas.getHeight()
+        const scaleX = viewportWidth / (img.width || 1)
+        const scaleY = viewportHeight / (img.height || 1)
+        const scale = Math.min(scaleX, scaleY, 1)
+        img.set({ scaleX: scale, scaleY: scale })
+        img.set({ left: 0, top: 0 })
+        canvas.add(img)
+        canvas.sendObjectToBack(img)
+        canvas.renderAll()
+      }).catch(() => { /* ignore failed image load */ })
+    },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [])
 

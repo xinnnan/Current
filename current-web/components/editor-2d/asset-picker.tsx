@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Package, Search, Plus, Info } from 'lucide-react'
 import type { AssetCategory } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
@@ -62,9 +62,36 @@ const DEMO_ASSET_KEYS: { id: string; nameKey: string; category: AssetCategory; d
 export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<AssetCategory | 'all'>('all')
+  const [dbAssets, setDbAssets] = useState<AssetLibraryItem[]>([])
   const { t } = useTranslation()
 
-  // Build localized demo assets
+  // Fetch real assets from database on mount
+  useEffect(() => {
+    const fetchAssets = async () => {
+      try {
+        const res = await fetch('/api/assets')
+        if (res.ok) {
+          const data = await res.json()
+          const assets = (data.assets || []) as { id: string; name: string; category: string; model_url: string | null; thumbnail_url: string | null; dimension_length: number | null; dimension_width: number | null; dimension_height: number | null }[]
+          if (assets.length > 0) {
+            setDbAssets(assets.map(a => ({
+              id: a.id,
+              name: a.name,
+              category: (a.category || 'other') as AssetCategory,
+              modelUrl: a.model_url,
+              thumbnailUrl: a.thumbnail_url,
+              dimension_length: a.dimension_length,
+              dimension_width: a.dimension_width,
+              dimension_height: a.dimension_height,
+            })))
+          }
+        }
+      } catch { /* use demo fallback */ }
+    }
+    fetchAssets()
+  }, [])
+
+  // Build localized demo assets as fallback
   const DEMO_ASSETS: AssetLibraryItem[] = DEMO_ASSET_KEYS.map(a => ({
     id: a.id,
     name: t(a.nameKey),
@@ -76,7 +103,10 @@ export function AssetPicker({ onSelect, selectedAssetId }: AssetPickerProps) {
     dimension_height: a.dimension_height,
   }))
 
-  const filteredAssets = DEMO_ASSETS.filter((asset) => {
+  // Use database assets if available, otherwise fall back to demo
+  const allAssets = dbAssets.length > 0 ? dbAssets : DEMO_ASSETS
+
+  const filteredAssets = allAssets.filter((asset) => {
     const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = categoryFilter === 'all' || asset.category === categoryFilter
     return matchesSearch && matchesCategory
