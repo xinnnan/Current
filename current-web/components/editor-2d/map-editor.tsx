@@ -2,6 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { Canvas, Circle, Line, Polygon, Group, Text, Image as FabricImage, Point, Rect } from 'fabric'
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
+
+// Configure PDF.js worker
+if (typeof window !== 'undefined') {
+  GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs`
+}
 
 export type EditorTool = 'select' | 'pan' | 'line' | 'polygon' | 'node' | 'calibrate' | 'place_asset'
 
@@ -313,14 +319,40 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     canvas.renderAll()
   }, [activeTool])
 
-  // Import base image
+  // Render PDF first page to a data URL (PNG)
+  const renderPdfToDataUrl = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await getDocument({ data: arrayBuffer }).promise
+    const page = await pdf.getPage(1)
+
+    // Use a scale that gives good resolution (2x for clarity)
+    const viewport = page.getViewport({ scale: 2 })
+    const offscreen = document.createElement('canvas')
+    offscreen.width = viewport.width
+    offscreen.height = viewport.height
+    const ctx = offscreen.getContext('2d')!
+
+    await page.render({ canvasContext: ctx, viewport }).promise
+    return offscreen.toDataURL('image/png')
+  }
+
+  // Import base image (supports JPEG/PNG/WebP + PDF)
   const importBaseImage = useCallback(async (file: File) => {
     const canvas = fabricRef.current
     if (!canvas) return
 
-    const url = URL.createObjectURL(file)
     try {
-      const img = await FabricImage.fromURL(url)
+      let imageUrl: string
+
+      if (file.type === 'application/pdf') {
+        // Render PDF first page to image
+        imageUrl = await renderPdfToDataUrl(file)
+      } else {
+        // Direct image file — use object URL
+        imageUrl = URL.createObjectURL(file)
+      }
+
+      const img = await FabricImage.fromURL(imageUrl)
       const canvasWidth = canvas.getWidth()
       const canvasHeight = canvas.getHeight()
       const scaleX = (canvasWidth * 0.8) / (img.width || 1)
@@ -341,8 +373,13 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       canvas.sendObjectToBack(img)
       canvas.renderAll()
       setHasContent(true)
-    } finally {
-      URL.revokeObjectURL(url)
+
+      // Clean up object URL if we created one
+      if (file.type !== 'application/pdf') {
+        URL.revokeObjectURL(imageUrl)
+      }
+    } catch (err) {
+      console.error('Failed to import file:', err)
     }
   }, [])
 
