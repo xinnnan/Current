@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Upload, Pen, Navigation, MousePointer2, Hand,
   Route, Hexagon, Trash2, Package,
@@ -10,9 +11,28 @@ import { LayerManager, type LayerItem } from '@/components/editor-2d/layer-manag
 import { CalibrationWizard, type CalibrationData } from '@/components/editor-2d/calibration-wizard'
 import { AssetPicker, type AssetLibraryItem } from '@/components/editor-2d/asset-picker'
 import { useTranslation } from '@/lib/i18n'
+import { useProjectStore } from '@/lib/project-store'
+
+interface MapRecord {
+  id: string
+  project_id: string
+  name: string
+  base_image_url: string | null
+  base_image_width: number | null
+  base_image_height: number | null
+  calibration: Record<string, unknown>
+  scale_ratio: number
+}
 
 export default function MapPage() {
   const { t } = useTranslation()
+  const searchParams = useSearchParams()
+  const projectId = searchParams.get('project')
+  const { setCurrentProject } = useProjectStore()
+
+  // Map record from database
+  const [mapRecord, setMapRecord] = useState<MapRecord | null>(null)
+  const [loading, setLoading] = useState(true)
 
   // Layer state
   const [layers, setLayers] = useState<LayerItem[]>([
@@ -40,6 +60,93 @@ export default function MapPage() {
   const [showAssetPicker, setShowAssetPicker] = useState(false)
 
   const editorRef = useRef<MapEditorRef>(null)
+
+  // ── Load or create map record for the project ──
+  useEffect(() => {
+    if (!projectId) {
+      setLoading(false)
+      return
+    }
+
+    const initMap = async () => {
+      try {
+        // Try to load existing map
+        const res = await fetch(`/api/maps?project_id=${projectId}`)
+        if (res.ok) {
+          const data = await res.json()
+          const maps = data.maps || []
+
+          if (maps.length > 0) {
+            // Use existing map
+            const existingMap = maps[0] as MapRecord
+            setMapRecord(existingMap)
+
+            // Restore calibration if exists
+            const calib = existingMap.calibration as Record<string, unknown>
+            if (calib && calib.point_a && calib.point_b && calib.real_distance_m) {
+              const pointA = calib.point_a as [number, number]
+              const pointB = calib.point_b as [number, number]
+              const dx = pointB[0] - pointA[0]
+              const dy = pointB[1] - pointA[1]
+              const pixelDist = Math.sqrt(dx * dx + dy * dy)
+              const realDistM = calib.real_distance_m as number
+
+              setCalibration({
+                pointA: { x: pointA[0], y: pointA[1] },
+                pointB: { x: pointB[0], y: pointB[1] },
+                pixelDistance: pixelDist,
+                realDistanceM: realDistM,
+                pixelsPerMeter: pixelDist / realDistM,
+              })
+            }
+          } else {
+            // Create new map for this project
+            const createRes = await fetch('/api/maps', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                project_id: projectId,
+                name: 'Main Map',
+              }),
+            })
+            if (createRes.ok) {
+              const createData = await createRes.json()
+              setMapRecord(createData.map)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load map:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    initMap()
+  }, [projectId])
+
+  // ── Save calibration to database ──
+  const saveCalibration = useCallback(async (calibData: CalibrationData | null) => {
+    if (!mapRecord) return
+
+    try {
+      await fetch(`/api/maps/${mapRecord.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          calibration: calibData ? {
+            point_a: [calibData.pointA!.x, calibData.pointA!.y],
+            point_b: [calibData.pointB!.x, calibData.pointB!.y],
+            real_distance_m: calibData.realDistanceM,
+            pixels_per_meter: calibData.pixelsPerMeter,
+          } : {},
+          scale_ratio: calibData?.pixelsPerMeter ? 1 / calibData.pixelsPerMeter : 1.0,
+        }),
+      })
+    } catch (err) {
+      console.error('Failed to save calibration:', err)
+    }
+  }, [mapRecord])
 
   // Layer management handlers
   const handleAddLayer = useCallback((name: string, type: LayerItem['type']) => {
@@ -70,13 +177,14 @@ export default function MapPage() {
       const dx = pointB.x - pointA.x
       const dy = pointB.y - pointA.y
       const pixelDist = Math.sqrt(dx * dx + dy * dy)
-      setCalibration({
+      const calibData: CalibrationData = {
         pointA,
         pointB,
         pixelDistance: pixelDist,
         realDistanceM: 0,
         pixelsPerMeter: 0,
-      })
+      }
+      setCalibration(calibData)
     } else if (action === 'select_element') {
       setSelectedElement(data as { type: 'node' | 'edge' | 'zone' | 'asset'; id: string; properties: Record<string, unknown> })
     } else if (action === 'asset_placed') {
@@ -86,6 +194,14 @@ export default function MapPage() {
       setActiveTool('select')
     }
   }, [])
+
+  // Handle calibration change (with save)
+  const handleCalibrationChange = useCallback((data: CalibrationData | null) => {
+    setCalibration(data)
+    if (data && data.realDistanceM > 0) {
+      saveCalibration(data)
+    }
+  }, [saveCalibration])
 
   // Handle asset selection from AssetPicker
   const handleAssetSelect = useCallback((asset: AssetLibraryItem) => {
@@ -105,6 +221,14 @@ export default function MapPage() {
     { id: 'calibrate', icon: Pen, labelKey: 'map.toolCalibrate' },
   ]
 
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-sm text-muted">{projectId ? 'Loading map...' : 'No project selected'}</div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full">
       {/* Left Panel - Layer Manager */}
@@ -122,7 +246,7 @@ export default function MapPage() {
         <div className="border-t border-panel-border">
           <CalibrationWizard
             calibration={calibration}
-            onCalibrationChange={setCalibration}
+            onCalibrationChange={handleCalibrationChange}
             onCalibrationModeChange={(active) => {
               setIsCalibrating(active)
               if (active) setActiveTool('calibrate')
