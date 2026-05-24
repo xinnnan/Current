@@ -123,6 +123,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'map.assets': 'Assets',
     'map.layers': 'Layers',
     'map.toolbarAriaLabel': 'Map editor toolbar',
+    'map.saveMap': 'Save Map',
+    'map.saving': 'Saving...',
+    'map.savedAt': 'Saved',
 
     // ── Simulation Page ──
     'sim.control': 'Simulation Control',
@@ -419,6 +422,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'map.assets': '资产',
     'map.layers': '图层',
     'map.toolbarAriaLabel': '地图编辑工具栏',
+    'map.saveMap': '保存地图',
+    'map.saving': '保存中...',
+    'map.savedAt': '已保存',
 
     // ── 仿真页 ──
     'sim.control': '仿真控制',

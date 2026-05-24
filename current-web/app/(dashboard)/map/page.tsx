@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   Upload, Pen, Navigation, MousePointer2, Hand,
-  Route, Hexagon, Trash2, Package,
+  Route, Hexagon, Trash2, Package, Save, Check,
 } from 'lucide-react'
 import { MapEditor, type EditorTool, type MapEditorRef, type PlacedAsset } from '@/components/editor-2d/map-editor'
 import { LayerManager, type LayerItem } from '@/components/editor-2d/layer-manager'
@@ -99,6 +99,10 @@ export default function MapPage() {
   // Route data (nodes/edges) for stats
   const [nodeCount, setNodeCount] = useState(0)
   const [edgeCount, setEdgeCount] = useState(0)
+
+  // Save state
+  const [saving, setSaving] = useState(false)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
 
   const editorRef = useRef<MapEditorRef>(null)
 
@@ -476,8 +480,35 @@ export default function MapPage() {
     setCalibration(data)
     if (data && data.realDistanceM > 0) {
       saveCalibration(data)
+      setLastSaved(new Date())
     }
   }, [saveCalibration])
+
+  // ── Manual save: persist map metadata + calibration ──
+  const handleSaveMap = useCallback(async () => {
+    if (!mapRecord) return
+    setSaving(true)
+    try {
+      // Save calibration if present
+      if (calibration && calibration.realDistanceM > 0) {
+        await saveCalibration(calibration)
+      }
+      // Update map record metadata
+      await fetch(`/api/maps/${mapRecord.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: mapRecord.name,
+          updated_at: new Date().toISOString(),
+        }),
+      })
+      setLastSaved(new Date())
+    } catch (err) {
+      console.error('Failed to save map:', err)
+    } finally {
+      setSaving(false)
+    }
+  }, [mapRecord, calibration, saveCalibration])
 
   // Handle asset selection from AssetPicker
   const handleAssetSelect = useCallback((asset: AssetLibraryItem) => {
@@ -603,10 +634,25 @@ export default function MapPage() {
           </button>
           <div className="flex-1" />
           {calibration && calibration.pixelsPerMeter > 0 && (
-            <span className="text-xs text-green-600 font-medium">
+            <span className="text-xs text-green-600 font-medium mr-2">
               {t('map.scale')}: {calibration.pixelsPerMeter.toFixed(1)} px/m
             </span>
           )}
+          {lastSaved && (
+            <span className="text-[10px] text-muted mr-2">
+              <Check size={10} className="inline mr-0.5" />
+              {t('map.savedAt')}: {lastSaved.toLocaleTimeString()}
+            </span>
+          )}
+          <button
+            onClick={handleSaveMap}
+            disabled={saving || !mapRecord}
+            className="flex items-center gap-1.5 px-3 py-1 bg-accent text-white rounded-md text-xs font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label={t('map.saveMap')}
+          >
+            <Save size={12} aria-hidden="true" />
+            {saving ? t('map.saving') : t('map.saveMap')}
+          </button>
         </div>
 
         {/* Canvas area */}
