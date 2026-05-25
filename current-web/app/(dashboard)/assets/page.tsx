@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Upload, Search, Box, Download, Loader2, CheckCircle, AlertCircle, Trash2, RefreshCw } from 'lucide-react'
-import { ModelViewer } from '@/components/viewer-3d/model-viewer'
+import { Upload, Search, Box, Download, Loader2, CheckCircle, AlertCircle, Trash2, RefreshCw, MapPin, Ruler, Weight, Layers } from 'lucide-react'
+import { ModelViewer, type Dimensions } from '@/components/viewer-3d/model-viewer'
 import { useTranslation } from '@/lib/i18n'
+import { useRouter } from 'next/navigation'
 
 interface AssetRecord {
   id: string
@@ -47,6 +48,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default function AssetsPage() {
   const { t } = useTranslation()
+  const router = useRouter()
   const [assets, setAssets] = useState<AssetRecord[]>([])
   const [selectedAsset, setSelectedAsset] = useState<AssetRecord | null>(null)
   const [loading, setLoading] = useState(true)
@@ -206,6 +208,30 @@ export default function AssetsPage() {
   // ── Progress percentage for inference job ──
   const jobProgress = activeJob ? Math.round(activeJob.progress * 100) : 0
 
+  // ── "Use in Map" handler — store asset in sessionStorage and navigate ──
+  const handleUseInMap = useCallback(() => {
+    if (!selectedAsset) return
+    sessionStorage.setItem('pendingAsset', JSON.stringify({
+      id: selectedAsset.id,
+      name: selectedAsset.name,
+      dimension_length: selectedAsset.dimension_length,
+      dimension_width: selectedAsset.dimension_width,
+      category: selectedAsset.category,
+    }))
+    router.push('/map')
+  }, [selectedAsset, router])
+
+  // ── Compute dimensions prop for ModelViewer ──
+  const viewerDimensions: Dimensions | undefined = selectedAsset ? {
+    length: selectedAsset.dimension_length ?? undefined,
+    width: selectedAsset.dimension_width ?? undefined,
+    height: selectedAsset.dimension_height ?? undefined,
+  } : undefined
+
+  const hasAnyDimension = selectedAsset && (
+    selectedAsset.dimension_length || selectedAsset.dimension_width || selectedAsset.dimension_height
+  )
+
   return (
     <div className="flex h-full">
       {/* Left Panel - Asset List */}
@@ -361,7 +387,11 @@ export default function AssetsPage() {
       {/* Center - 3D Viewer */}
       <div className="flex-1 relative">
         {selectedAsset?.model_url ? (
-          <ModelViewer modelUrl={selectedAsset.model_url} />
+          <ModelViewer
+            modelUrl={selectedAsset.model_url}
+            dimensions={viewerDimensions}
+            showDimensions={!!hasAnyDimension}
+          />
         ) : selectedAsset?.source_image_url ? (
           <div className="flex items-center justify-center h-full bg-canvas-bg">
             <img
@@ -483,6 +513,80 @@ export default function AssetsPage() {
                   </div>
                 </div>
               </div>
+            </section>
+
+            {/* Dimensions read-only display */}
+            <section>
+              <h4 className="text-xs font-medium text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Ruler size={12} aria-hidden="true" />
+                {t('assets.dimensions')}
+              </h4>
+              {hasAnyDimension ? (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+                  <div className="text-sm font-semibold text-indigo-700 font-mono tracking-wide">
+                    {selectedAsset.dimension_length?.toFixed(1) ?? '—'}
+                    <span className="text-indigo-400 mx-1">×</span>
+                    {selectedAsset.dimension_width?.toFixed(1) ?? '—'}
+                    <span className="text-indigo-400 mx-1">×</span>
+                    {selectedAsset.dimension_height?.toFixed(1) ?? '—'}
+                    <span className="text-indigo-500 text-xs font-sans ml-1.5">cm</span>
+                  </div>
+                  <div className="text-[10px] text-indigo-500 mt-1">
+                    {t('assets.dimensionsLwh')} (L × W × H)
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-muted italic">{t('assets.noDimensions')}</div>
+              )}
+            </section>
+
+            {/* Material / Physical info read-only display */}
+            {(() => {
+              const pp = (selectedAsset.physical_params as Record<string, number>) || {}
+              const hasMaterialInfo = pp.mass || pp.density || pp.friction
+              return hasMaterialInfo ? (
+                <section>
+                  <h4 className="text-xs font-medium text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Layers size={12} aria-hidden="true" />
+                    {t('assets.material')}
+                  </h4>
+                  <div className="space-y-1.5">
+                    {pp.mass != null && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <Weight size={12} className="text-gray-400" aria-hidden="true" />
+                        <span className="text-muted">{t('assets.mass')}:</span>
+                        <span className="font-medium">{pp.mass} kg</span>
+                      </div>
+                    )}
+                    {pp.density != null && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="w-3 h-3 rounded-full bg-amber-100 border border-amber-300 inline-block shrink-0" aria-hidden="true" />
+                        <span className="text-muted">{t('assets.density')}:</span>
+                        <span className="font-medium">{pp.density} kg/m³</span>
+                      </div>
+                    )}
+                    {pp.friction != null && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="w-3 h-3 rounded-full bg-blue-100 border border-blue-300 inline-block shrink-0" aria-hidden="true" />
+                        <span className="text-muted">{t('assets.friction')}:</span>
+                        <span className="font-medium">{pp.friction}</span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              ) : null
+            })()}
+
+            {/* Use in Map button */}
+            <section>
+              <button
+                onClick={handleUseInMap}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition-colors shadow-sm"
+                aria-label={t('assets.useInMapAriaLabel')}
+              >
+                <MapPin size={16} aria-hidden="true" />
+                {t('assets.useInMap')}
+              </button>
             </section>
 
             {/* Physical properties */}

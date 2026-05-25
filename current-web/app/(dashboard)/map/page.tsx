@@ -96,6 +96,22 @@ export default function MapPage() {
   const [placedAssets, setPlacedAssets] = useState<PlacedAsset[]>([])
   const [showAssetPicker, setShowAssetPicker] = useState(false)
 
+  // ── Check sessionStorage for pending asset from "Use in Map" button ──
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('pendingAsset')
+      if (stored) {
+        sessionStorage.removeItem('pendingAsset')
+        const asset = JSON.parse(stored) as AssetLibraryItem
+        setPendingAsset(asset)
+        setActiveTool('place_asset')
+        setShowAssetPicker(false)
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
+
   // Route data (nodes/edges) for stats
   const [nodeCount, setNodeCount] = useState(0)
   const [edgeCount, setEdgeCount] = useState(0)
@@ -660,6 +676,7 @@ export default function MapPage() {
           <MapEditor
             ref={editorRef}
             activeTool={activeTool}
+            pixelsPerMeter={calibration?.pixelsPerMeter}
             pendingAsset={pendingAsset}
             onToolAction={handleToolAction}
           />

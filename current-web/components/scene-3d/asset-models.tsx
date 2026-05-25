@@ -13,6 +13,12 @@ interface AssetInstanceData {
   positionZ: number  // height meters
   rotation: number   // radians around Y axis
   scale: number
+  /** Physical length in meters (converted from cm) */
+  dimensionLength?: number
+  /** Physical width in meters (converted from cm) */
+  dimensionWidth?: number
+  /** Physical height in meters (converted from cm) */
+  dimensionHeight?: number
 }
 
 interface AssetModelsProps {
@@ -21,21 +27,25 @@ interface AssetModelsProps {
 
 /**
  * Single 3D asset instance with auto-scaling and ground alignment.
+ * When physical dimensions are provided, the model is scaled to match real-world size.
  */
 function AssetModel({ instance }: { instance: AssetInstanceData }) {
   // Load GLB or use placeholder
   const hasModel = instance.modelUrl != null
 
   if (!hasModel) {
-    // Placeholder: colored box
+    // Placeholder: colored box sized to physical dimensions or default
+    const w = instance.dimensionLength ?? 1
+    const h = instance.dimensionHeight ?? 1
+    const d = instance.dimensionWidth ?? 1
+
     return (
       <group
-        position={[instance.positionX, instance.positionZ || 0.5, instance.positionY]}
+        position={[instance.positionX, (instance.positionZ || 0) + h / 2, instance.positionY]}
         rotation={[0, instance.rotation, 0]}
-        scale={instance.scale}
       >
         <mesh castShadow receiveShadow>
-          <boxGeometry args={[1, 1, 1]} />
+          <boxGeometry args={[w, h, d]} />
           <meshStandardMaterial color="#64748b" />
         </mesh>
       </group>
@@ -57,16 +67,32 @@ function GLBAssetInstance({ instance }: { instance: AssetInstanceData }) {
       const box = new THREE.Box3().setFromObject(clone)
       const size = box.getSize(new THREE.Vector3())
       const maxDim = Math.max(size.x, size.y, size.z)
-      const scaleFactor = maxDim > 0 ? 1.5 / maxDim : 1
 
-      clone.scale.multiplyScalar(scaleFactor * instance.scale)
+      let scaleFactor: number
+
+      if (instance.dimensionLength && instance.dimensionLength > 0) {
+        // Scale model to match physical dimensions
+        // Use the largest model dimension to determine scale, then apply to target physical size
+        const targetSize = Math.max(
+          instance.dimensionLength || 0,
+          instance.dimensionHeight || 0,
+          instance.dimensionWidth || 0
+        )
+        scaleFactor = maxDim > 0 ? targetSize / maxDim : 1
+      } else {
+        // Fallback: normalize to 1.5m default size
+        scaleFactor = maxDim > 0 ? 1.5 / maxDim : 1
+      }
+
+      scaleFactor *= instance.scale
+      clone.scale.multiplyScalar(scaleFactor)
 
       // Recalculate after scaling
       const scaledBox = new THREE.Box3().setFromObject(clone)
       const yOff = -scaledBox.min.y // Align bottom to ground
 
       return { clonedScene: clone, yOffset: yOff }
-    }, [scene, instance.scale])
+    }, [scene, instance.scale, instance.dimensionLength, instance.dimensionWidth, instance.dimensionHeight])
 
     return (
       <primitive
@@ -81,14 +107,17 @@ function GLBAssetInstance({ instance }: { instance: AssetInstanceData }) {
     )
   } catch {
     // Fallback to placeholder if GLB fails to load
+    const w = instance.dimensionLength ?? 1
+    const h = instance.dimensionHeight ?? 1
+    const d = instance.dimensionWidth ?? 1
+
     return (
       <group
-        position={[instance.positionX, instance.positionZ || 0.5, instance.positionY]}
+        position={[instance.positionX, (instance.positionZ || 0) + h / 2, instance.positionY]}
         rotation={[0, instance.rotation, 0]}
-        scale={instance.scale}
       >
         <mesh castShadow>
-          <boxGeometry args={[1, 1, 1]} />
+          <boxGeometry args={[w, h, d]} />
           <meshStandardMaterial color="#ef4444" />
         </mesh>
       </group>

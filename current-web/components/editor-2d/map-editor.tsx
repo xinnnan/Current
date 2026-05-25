@@ -26,6 +26,8 @@ export interface PlacedAsset {
 export interface MapEditorProps {
   className?: string
   activeTool?: EditorTool
+  /** Pixels per meter from calibration — used to scale placed assets proportionally */
+  pixelsPerMeter?: number
   pendingAsset?: {
     id: string
     name: string
@@ -58,7 +60,7 @@ const ASSET_COLORS: Record<string, string> = {
 }
 
 export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEditor(
-  { className, activeTool: externalTool, pendingAsset, onToolAction },
+  { className, activeTool: externalTool, pixelsPerMeter, pendingAsset, onToolAction },
   ref
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -71,11 +73,13 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
   const activeToolRef = useRef<EditorTool>(externalTool ?? 'select')
   const pendingAssetRef = useRef(pendingAsset)
   const onToolActionRef = useRef(onToolAction)
+  const pixelsPerMeterRef = useRef(pixelsPerMeter)
 
   // Keep refs in sync with props/state
   useEffect(() => { activeToolRef.current = externalTool ?? 'select' }, [externalTool])
   useEffect(() => { pendingAssetRef.current = pendingAsset }, [pendingAsset])
   useEffect(() => { onToolActionRef.current = onToolAction }, [onToolAction])
+  useEffect(() => { pixelsPerMeterRef.current = pixelsPerMeter }, [pixelsPerMeter])
 
   // Pan state
   const isDragging = useRef(false)
@@ -684,8 +688,24 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     const color = ASSET_COLORS[asset.category] || ASSET_COLORS.other
 
     const defaultPx = 40
-    const w = asset.dimension_length ? asset.dimension_length * 20 : defaultPx
-    const h = asset.dimension_width ? asset.dimension_width * 20 : defaultPx * 0.75
+    let w: number
+    let h: number
+
+    const ppm = pixelsPerMeterRef.current
+    if (ppm && ppm > 0 && asset.dimension_length) {
+      // Proportional scaling: dimensions are in cm → convert to m → multiply by pixels_per_meter
+      w = (asset.dimension_length / 100) * ppm
+      h = asset.dimension_width
+        ? (asset.dimension_width / 100) * ppm
+        : w * 0.75
+      // Minimum size to remain visible
+      w = Math.max(w, 12)
+      h = Math.max(h, 10)
+    } else {
+      // Fallback: arbitrary scaling without calibration
+      w = asset.dimension_length ? asset.dimension_length * 20 : defaultPx
+      h = asset.dimension_width ? asset.dimension_width * 20 : defaultPx * 0.75
+    }
 
     const rect = new Rect({
       left: x - w / 2,

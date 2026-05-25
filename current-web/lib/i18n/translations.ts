@@ -89,6 +89,16 @@ export const translations: Record<Locale, Record<string, string>> = {
     'assets.lengthCm': 'Length (cm)',
     'assets.widthCm': 'Width (cm)',
     'assets.heightCm': 'Height (cm)',
+    'assets.dimensions': 'Dimensions',
+    'assets.dimensionsLwh': 'L × W × H',
+    'assets.noDimensions': 'No dimensions set',
+    'assets.material': 'Material Info',
+    'assets.useInMap': 'Use in Map',
+    'assets.useInMapAriaLabel': 'Place this asset in the map editor',
+    'viewer.gridUnit': 'Grid unit: meters',
+    'viewer.length': 'L',
+    'viewer.width': 'W',
+    'viewer.height': 'H',
 
     // ── Map Page ──
     'map.baseLayer': 'Base Layer',
@@ -388,6 +398,16 @@ export const translations: Record<Locale, Record<string, string>> = {
     'assets.lengthCm': '长 (cm)',
     'assets.widthCm': '宽 (cm)',
     'assets.heightCm': '高 (cm)',
+    'assets.dimensions': '尺寸',
+    'assets.dimensionsLwh': '长 × 宽 × 高',
+    'assets.noDimensions': '未设置尺寸',
+    'assets.material': '材料信息',
+    'assets.useInMap': '在地图中使用',
+    'assets.useInMapAriaLabel': '在地图编辑器中放置此资产',
+    'viewer.gridUnit': '网格单位：米',
+    'viewer.length': '长',
+    'viewer.width': '宽',
+    'viewer.height': '高',
 
     // ── 地图页 ──
     'map.baseLayer': '底图层',
