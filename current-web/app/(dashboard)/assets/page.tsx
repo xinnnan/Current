@@ -97,6 +97,7 @@ export default function AssetsPage() {
             fetchAssets() // Refresh list
           } else if (job.status === 'failed') {
             setUploadStatus({ type: 'error', message: job.error_message || 'Generation failed' })
+            fetchAssets() // Refresh list to show uploaded image even if inference failed
           }
         }
       } catch {
@@ -393,12 +394,20 @@ export default function AssetsPage() {
             showDimensions={!!hasAnyDimension}
           />
         ) : selectedAsset?.source_image_url ? (
-          <div className="flex items-center justify-center h-full bg-canvas-bg">
+          <div className="flex flex-col items-center justify-center h-full bg-canvas-bg">
             <img
               src={selectedAsset.source_image_url}
               alt={selectedAsset.name}
-              className="max-w-[80%] max-h-[80%] object-contain rounded shadow-lg"
+              className="max-w-[80%] max-h-[70%] object-contain rounded shadow-lg"
             />
+            <div className="mt-3 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-center gap-1.5">
+              <AlertCircle size={12} />
+              {activeJob?.status === 'failed'
+                ? t('assets.generationFailed')
+                : activeJob && activeJob.status !== 'completed'
+                  ? t('assets.generating')
+                  : t('assets.noModel')}
+            </div>
           </div>
         ) : (
           <ModelViewer />

@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import {
   Play, Pause, FastForward, BarChart3, Settings,
   RotateCcw, Truck, Clock, Activity, AlertTriangle, Zap,
   TrendingUp, TrendingDown, Minus, CircleDot, Link2, PackageCheck,
+  FolderOpen, Plus,
 } from 'lucide-react'
 import { SimulationEngine, type SimConfig, type SimMetrics, type AGVAnimationFrame } from '@/lib/simulation/engine'
 import { RCSScheduler, DEFAULT_TASK_TEMPLATES, type TaskTemplate, type ConflictResolution } from '@/lib/simulation/rcs-scheduler'
@@ -71,11 +72,30 @@ const DEMO_LOGISTICS_NODES: LogisticsNodeOption[] = [
 export default function SimulationPage() {
   const { t } = useTranslation()
   const searchParams = useSearchParams()
-  const projectId = searchParams.get('project')
-  const { setCurrentProject } = useProjectStore()
+  const router = useRouter()
+  const urlProjectId = searchParams.get('project')
+  const { currentProjectId, setCurrentProject } = useProjectStore()
+  const projectId = urlProjectId || currentProjectId
 
   // Simulation record from database
   const [simRecordId, setSimRecordId] = useState<string | null>(null)
+
+  // Project list state (for when no project is selected)
+  const [projects, setProjects] = useState<{ id: string; name: string; created_at: string }[]>([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
+
+  // ── Fetch project list when no project selected ──
+  useEffect(() => {
+    if (projectId) return
+    setLoadingProjects(true)
+    fetch('/api/projects')
+      .then(res => res.ok ? res.json() : { projects: [] })
+      .then(data => {
+        setProjects(data.projects || [])
+        setLoadingProjects(false)
+      })
+      .catch(() => setLoadingProjects(false))
+  }, [projectId])
 
   // Load or create simulation record on mount
   useEffect(() => {
@@ -515,6 +535,54 @@ export default function SimulationPage() {
   }
 
   const currentSimTime = progress * duration
+
+  // No project selected — show project list
+  if (!projectId) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="w-full max-w-lg px-6">
+          <div className="text-center mb-6">
+            <FolderOpen size={48} className="mx-auto mb-3 opacity-20" />
+            <h2 className="text-lg font-medium">{t('sim.selectProject')}</h2>
+            <p className="text-sm text-muted mt-1">{t('sim.selectProjectDesc')}</p>
+          </div>
+          {loadingProjects ? (
+            <div className="text-center text-sm text-muted">Loading projects...</div>
+          ) : projects.length === 0 ? (
+            <div className="text-center text-sm text-muted">
+              <p>{t('sim.noProjects')}</p>
+              <button
+                onClick={() => router.push('/')}
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-accent-hover transition-colors"
+              >
+                <Plus size={14} />
+                {t('sim.createProject')}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => {
+                    setCurrentProject(project.id, project.name)
+                    router.push(`/simulation?project=${project.id}`)
+                  }}
+                  className="w-full text-left p-3 rounded-lg border border-panel-border hover:border-accent/30 hover:bg-accent/5 transition-colors flex items-center gap-3"
+                >
+                  <FolderOpen size={18} className="text-muted shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{project.name}</div>
+                    <div className="text-[10px] text-muted">{new Date(project.created_at).toLocaleDateString()}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col">
