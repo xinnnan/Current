@@ -9,7 +9,7 @@ if (typeof window !== 'undefined') {
   GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs`
 }
 
-export type EditorTool = 'select' | 'pan' | 'line' | 'polygon' | 'node' | 'calibrate' | 'place_asset'
+export type EditorTool = 'select' | 'pan' | 'line' | 'polygon' | 'node' | 'calibrate' | 'place_asset' | 'loading_port' | 'unloading_port' | 'workstation'
 
 export interface PlacedAsset {
   id: string
@@ -197,6 +197,12 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
         return
       }
 
+      // Logistics node tools
+      if (tool === 'loading_port' || tool === 'unloading_port' || tool === 'workstation') {
+        addLogisticsNode(pointer.x, pointer.y, tool)
+        return
+      }
+
       // Calibrate tool
       if (tool === 'calibrate') {
         // Block clicks after two points are placed (waiting for distance input)
@@ -325,13 +331,26 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
       if (tool === 'select') {
         const target = canvas.findTarget(opt.e as MouseEvent)
         if (target) {
-          onToolActionRef.current?.('select_element', {
-            type: target instanceof Circle ? 'node' :
-                  target instanceof Line ? 'edge' :
-                  target instanceof Polygon ? 'zone' : 'unknown',
-            id: (target as Record<string, unknown>)._id ?? 'unknown',
-            properties: {},
-          })
+          const targetAny = target as Record<string, unknown>
+          // Check if it's a logistics node group
+          if (targetAny._nodeType) {
+            onToolActionRef.current?.('select_element', {
+              type: 'node',
+              id: targetAny._nodeId ?? 'unknown',
+              properties: {
+                node_type: targetAny._nodeType,
+                logistics_config: targetAny._logisticsConfig,
+              },
+            })
+          } else {
+            onToolActionRef.current?.('select_element', {
+              type: target instanceof Circle ? 'node' :
+                    target instanceof Line ? 'edge' :
+                    target instanceof Polygon ? 'zone' : 'unknown',
+              id: targetAny._id ?? 'unknown',
+              properties: {},
+            })
+          }
         }
       }
     })
@@ -477,7 +496,7 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     if (tool === 'pan') {
       canvas.defaultCursor = 'grab'
       canvas.hoverCursor = 'grab'
-    } else if (tool === 'calibrate' || tool === 'node' || tool === 'line' || tool === 'polygon' || tool === 'place_asset') {
+    } else if (tool === 'calibrate' || tool === 'node' || tool === 'line' || tool === 'polygon' || tool === 'place_asset' || tool === 'loading_port' || tool === 'unloading_port' || tool === 'workstation') {
       canvas.defaultCursor = 'crosshair'
       canvas.hoverCursor = 'crosshair'
     } else {
@@ -625,6 +644,135 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
     // Notify parent for persistence
     const nodeId = `node_${Date.now()}`
     onToolActionRef.current?.('node_added', { id: nodeId, x, y, label })
+  }, [])
+
+  // ── Add logistics node (loading_port / unloading_port / workstation) ──
+  const addLogisticsNode = useCallback((x: number, y: number, nodeType: 'loading_port' | 'unloading_port' | 'workstation') => {
+    const canvas = fabricRef.current
+    if (!canvas) return
+
+    const nodeId = `node_${Date.now()}`
+    const RADIUS = 12
+
+    // Default logistics_config
+    const defaultConfig = {
+      throughput_items_per_hour: 60,
+      processing_time_seconds: 30,
+      buffer_capacity: 10,
+      operation_type: nodeType === 'loading_port' ? 'pickup' as const
+        : nodeType === 'unloading_port' ? 'dropoff' as const
+        : 'both' as const,
+    }
+
+    let group: Group
+
+    if (nodeType === 'loading_port') {
+      // Green circle + upward arrow
+      const bg = new Circle({
+        left: 0,
+        top: 0,
+        radius: RADIUS,
+        fill: '#22c55e',
+        stroke: '#15803d',
+        strokeWidth: 2,
+      })
+      // Upward arrow using a triangle (Polygon)
+      const arrow = new Polygon(
+        [
+          { x: RADIUS, y: 3 },          // tip
+          { x: RADIUS - 5, y: 10 },     // bottom-left
+          { x: RADIUS + 5, y: 10 },     // bottom-right
+        ],
+        {
+          fill: 'white',
+          stroke: 'white',
+          strokeWidth: 1,
+          left: 0,
+          top: 0,
+        }
+      )
+      // Arrow shaft
+      const shaft = new Line(
+        [RADIUS, 8, RADIUS, RADIUS * 2 - 4],
+        { stroke: 'white', strokeWidth: 2 }
+      )
+      group = new Group([bg, arrow, shaft], { left: x - RADIUS, top: y - RADIUS })
+    } else if (nodeType === 'unloading_port') {
+      // Red circle + downward arrow
+      const bg = new Circle({
+        left: 0,
+        top: 0,
+        radius: RADIUS,
+        fill: '#ef4444',
+        stroke: '#b91c1c',
+        strokeWidth: 2,
+      })
+      // Downward arrow using a triangle
+      const arrow = new Polygon(
+        [
+          { x: RADIUS, y: RADIUS * 2 - 3 },  // tip
+          { x: RADIUS - 5, y: RADIUS * 2 - 10 },  // top-left
+          { x: RADIUS + 5, y: RADIUS * 2 - 10 },  // top-right
+        ],
+        {
+          fill: 'white',
+          stroke: 'white',
+          strokeWidth: 1,
+          left: 0,
+          top: 0,
+        }
+      )
+      // Arrow shaft
+      const shaft = new Line(
+        [RADIUS, 4, RADIUS, RADIUS * 2 - 8],
+        { stroke: 'white', strokeWidth: 2 }
+      )
+      group = new Group([bg, arrow, shaft], { left: x - RADIUS, top: y - RADIUS })
+    } else {
+      // workstation: blue square + "W" text
+      const SIZE = 24 // 12×12 means 12px half-side → 24px full side
+      const bg = new Rect({
+        left: 0,
+        top: 0,
+        width: SIZE,
+        height: SIZE,
+        fill: '#3b82f6',
+        stroke: '#1e40af',
+        strokeWidth: 2,
+        rx: 3,
+        ry: 3,
+      })
+      const text = new Text('W', {
+        left: SIZE / 2,
+        top: SIZE / 2,
+        fontSize: 14,
+        fontWeight: 'bold',
+        fill: 'white',
+        originX: 'center',
+        originY: 'center',
+        fontFamily: 'sans-serif',
+      })
+      group = new Group([bg, text], { left: x - SIZE / 2, top: y - SIZE / 2 })
+    }
+
+    // Tag the group with metadata for selection detection
+    const groupAny = group as unknown as Record<string, unknown>
+    groupAny._nodeId = nodeId
+    groupAny._nodeType = nodeType
+    groupAny._logisticsConfig = defaultConfig
+
+    canvas.add(group)
+    canvas.renderAll()
+    setHasContent(true)
+
+    // Notify parent for persistence
+    onToolActionRef.current?.('node_added', {
+      id: nodeId,
+      x,
+      y,
+      node_type: nodeType,
+      logistics_config: defaultConfig,
+    })
   }, [])
 
   // ── Add route line between two points ──

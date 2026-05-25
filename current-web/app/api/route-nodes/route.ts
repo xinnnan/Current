@@ -40,10 +40,16 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json()
-  const { map_id, x, y, node_type, label, properties } = body
+  const { map_id, x, y, node_type, label, properties, logistics_config } = body
 
   if (!map_id || x === undefined || y === undefined) {
     return NextResponse.json({ error: 'map_id, x, y are required' }, { status: 400 })
+  }
+
+  // Merge logistics_config into properties for storage
+  const mergedProperties = { ...(properties || {}) }
+  if (logistics_config) {
+    mergedProperties.logistics_config = logistics_config
   }
 
   const { data: node, error } = await supabase
@@ -54,7 +60,7 @@ export async function POST(request: Request) {
       y,
       node_type: node_type || 'waypoint',
       label: label || null,
-      properties: properties || {},
+      properties: mergedProperties,
     })
     .select()
     .single()

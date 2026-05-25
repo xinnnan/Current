@@ -23,6 +23,23 @@ export async function PATCH(
   if (body.label !== undefined) updates.label = body.label
   if (body.properties !== undefined) updates.properties = body.properties
 
+  // Handle logistics_config: merge into existing properties
+  if (body.logistics_config !== undefined) {
+    // Fetch existing node to merge properties
+    const { data: existing } = await supabase
+      .from('route_nodes')
+      .select('properties')
+      .eq('id', id)
+      .single()
+
+    const existingProps = (existing?.properties || {}) as Record<string, unknown>
+    updates.properties = {
+      ...existingProps,
+      ...(body.properties || {}),
+      logistics_config: body.logistics_config,
+    }
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
   }

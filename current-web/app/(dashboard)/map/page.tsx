@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   Upload, Pen, Navigation, MousePointer2, Hand,
   Route, Hexagon, Trash2, Package, Save, Check,
+  ArrowUpFromLine, ArrowDownToLine, Building2,
 } from 'lucide-react'
 import { MapEditor, type EditorTool, type MapEditorRef, type PlacedAsset } from '@/components/editor-2d/map-editor'
 import { LayerManager, type LayerItem } from '@/components/editor-2d/layer-manager'
@@ -89,6 +90,14 @@ export default function MapPage() {
     type: 'node' | 'edge' | 'zone' | 'asset'
     id: string
     properties: Record<string, unknown>
+  } | null>(null)
+
+  // Logistics config editing state
+  const [editingLogisticsConfig, setEditingLogisticsConfig] = useState<{
+    throughput_items_per_hour: number
+    processing_time_seconds: number
+    buffer_capacity: number
+    operation_type: 'pickup' | 'dropoff' | 'both'
   } | null>(null)
 
   // Asset placement state
@@ -385,7 +394,14 @@ export default function MapPage() {
       }
       setCalibration(calibData)
     } else if (action === 'select_element') {
-      setSelectedElement(data as { type: 'node' | 'edge' | 'zone' | 'asset'; id: string; properties: Record<string, unknown> })
+      const elem = data as { type: 'node' | 'edge' | 'zone' | 'asset'; id: string; properties: Record<string, unknown> }
+      setSelectedElement(elem)
+      // Load logistics config if present
+      if (elem.properties?.logistics_config) {
+        setEditingLogisticsConfig(elem.properties.logistics_config as typeof editingLogisticsConfig)
+      } else {
+        setEditingLogisticsConfig(null)
+      }
     } else if (action === 'asset_placed') {
       const placed = data as unknown as PlacedAsset
       setPlacedAssets(prev => [...prev, placed])
@@ -417,11 +433,20 @@ export default function MapPage() {
         const x = data.x as number
         const y = data.y as number
         const label = data.label as string | undefined
+        const nodeType = data.node_type as string | undefined
+        const logisticsConfig = data.logistics_config as Record<string, unknown> | undefined
         try {
           const res = await fetch('/api/route-nodes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ map_id: mapRecord.id, x, y, label, node_type: 'waypoint' }),
+            body: JSON.stringify({
+              map_id: mapRecord.id,
+              x,
+              y,
+              label,
+              node_type: nodeType || 'waypoint',
+              logistics_config: logisticsConfig,
+            }),
           })
           if (res.ok) {
             setNodeCount(prev => prev + 1)
@@ -533,11 +558,31 @@ export default function MapPage() {
     setShowAssetPicker(false)
   }, [])
 
+  // Handle logistics config change and persist
+  const handleLogisticsConfigChange = useCallback(async (field: string, value: number | string) => {
+    if (!selectedElement || !editingLogisticsConfig) return
+
+    const updated = { ...editingLogisticsConfig, [field]: value }
+    setEditingLogisticsConfig(updated)
+
+    // Persist to database via PATCH
+    try {
+      await fetch(`/api/route-nodes/${selectedElement.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logistics_config: updated }),
+      })
+    } catch { /* ignore */ }
+  }, [selectedElement, editingLogisticsConfig])
+
   // Tool definitions
   const tools: { id: EditorTool; icon: typeof MousePointer2; labelKey: string }[] = [
     { id: 'select', icon: MousePointer2, labelKey: 'map.toolSelect' },
     { id: 'pan', icon: Hand, labelKey: 'map.toolPan' },
     { id: 'node', icon: Navigation, labelKey: 'map.toolNode' },
+    { id: 'loading_port', icon: ArrowUpFromLine, labelKey: 'map.toolLoadingPort' },
+    { id: 'unloading_port', icon: ArrowDownToLine, labelKey: 'map.toolUnloadingPort' },
+    { id: 'workstation', icon: Building2, labelKey: 'map.toolWorkstation' },
     { id: 'line', icon: Route, labelKey: 'map.toolLine' },
     { id: 'polygon', icon: Hexagon, labelKey: 'map.toolPolygon' },
     { id: 'place_asset', icon: Package, labelKey: 'map.toolPlaceAsset' },
@@ -718,7 +763,89 @@ export default function MapPage() {
               {selectedElement.type === 'node' ? t('map.nodeProperties') :
                selectedElement.type === 'edge' ? t('map.edgeProperties') : t('map.zoneProperties')}
             </div>
-            {Object.entries(selectedElement.properties).map(([key, value]) => (
+
+            {/* Logistics node config panel */}
+            {selectedElement.type === 'node' && editingLogisticsConfig && (
+              <div className="space-y-3 pb-3 border-b border-gray-200">
+                <div className="text-xs font-semibold text-accent">{t('map.logisticsConfig')}</div>
+
+                {/* Node type (read-only) */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">{t('map.nodeType')}</label>
+                  <div className="px-2 py-1.5 text-xs border border-gray-200 rounded bg-gray-100 font-medium">
+                    {selectedElement.properties.node_type === 'loading_port' ? t('map.loadingPort') :
+                     selectedElement.properties.node_type === 'unloading_port' ? t('map.unloadingPort') :
+                     selectedElement.properties.node_type === 'workstation' ? t('map.workstation') :
+                     String(selectedElement.properties.node_type ?? 'waypoint')}
+                  </div>
+                </div>
+
+                {/* Throughput */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">{t('map.throughput')}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={editingLogisticsConfig.throughput_items_per_hour}
+                      onChange={(e) => handleLogisticsConfigChange('throughput_items_per_hour', Number(e.target.value))}
+                      className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded bg-white"
+                    />
+                    <span className="text-[10px] text-muted whitespace-nowrap">{t('map.itemsPerHour')}</span>
+                  </div>
+                </div>
+
+                {/* Processing time */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">{t('map.processingTime')}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0.1}
+                      max={3600}
+                      step={0.1}
+                      value={editingLogisticsConfig.processing_time_seconds}
+                      onChange={(e) => handleLogisticsConfigChange('processing_time_seconds', Number(e.target.value))}
+                      className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded bg-white"
+                    />
+                    <span className="text-[10px] text-muted whitespace-nowrap">{t('map.secondsPerItem')}</span>
+                  </div>
+                </div>
+
+                {/* Buffer capacity */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">{t('map.bufferCapacity')}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10000}
+                    value={editingLogisticsConfig.buffer_capacity}
+                    onChange={(e) => handleLogisticsConfigChange('buffer_capacity', Number(e.target.value))}
+                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded bg-white"
+                  />
+                </div>
+
+                {/* Operation type */}
+                <div className="space-y-1">
+                  <label className="text-xs text-muted">{t('map.operationType')}</label>
+                  <select
+                    value={editingLogisticsConfig.operation_type}
+                    onChange={(e) => handleLogisticsConfigChange('operation_type', e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded bg-white"
+                  >
+                    <option value="pickup">{t('map.pickup')}</option>
+                    <option value="dropoff">{t('map.dropoff')}</option>
+                    <option value="both">{t('map.both')}</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Generic properties display */}
+            {Object.entries(selectedElement.properties)
+              .filter(([key]) => key !== 'logistics_config' && key !== 'node_type')
+              .map(([key, value]) => (
               <div key={key} className="space-y-1">
                 <label className="text-xs text-muted">{key}</label>
                 <input

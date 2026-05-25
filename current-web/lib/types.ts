@@ -113,6 +113,13 @@ export interface MapLayer {
   created_at: string
 }
 
+export interface LogisticsConfig {
+  throughput_items_per_hour?: number
+  processing_time_seconds?: number
+  buffer_capacity?: number
+  operation_type?: 'pickup' | 'dropoff' | 'both'
+}
+
 export interface RouteNode {
   id: string
   map_id: string
@@ -121,10 +128,19 @@ export interface RouteNode {
   node_type: NodeType
   label: string | null
   properties: Record<string, unknown>
+  logistics_config?: LogisticsConfig
   created_at: string
 }
 
-export type NodeType = 'waypoint' | 'station' | 'charger' | 'parking' | 'intersection'
+export type NodeType =
+  | 'waypoint'
+  | 'station'
+  | 'charger'
+  | 'parking'
+  | 'intersection'
+  | 'loading_port'
+  | 'unloading_port'
+  | 'workstation'
 
 export interface RouteEdge {
   id: string
