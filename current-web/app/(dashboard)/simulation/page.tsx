@@ -5,15 +5,17 @@ import { useSearchParams } from 'next/navigation'
 import {
   Play, Pause, FastForward, BarChart3, Settings,
   RotateCcw, Truck, Clock, Activity, AlertTriangle, Zap,
-  TrendingUp, TrendingDown, Minus, CircleDot, Link2, Lightbulb, PackageCheck,
+  TrendingUp, TrendingDown, Minus, CircleDot, Link2, PackageCheck,
 } from 'lucide-react'
 import { SimulationEngine, type SimConfig, type SimMetrics, type AGVAnimationFrame } from '@/lib/simulation/engine'
 import { RCSScheduler, DEFAULT_TASK_TEMPLATES, type TaskTemplate, type ConflictResolution } from '@/lib/simulation/rcs-scheduler'
-import { calculateThroughput, type TaskChain, type ThroughputResult } from '@/lib/simulation/throughput-calculator'
+import { calculateThroughput, type TaskChain, type ThroughputResult, type ThroughputInput } from '@/lib/simulation/throughput-calculator'
 import { LogisticsEngine, type LogisticsEngineConfig, type LogisticsMetrics } from '@/lib/simulation/logistics-engine'
 import { HeatmapOverlay, HeatmapLegend, type HeatmapEdge } from '@/components/simulation/heatmap-overlay'
 import { TaskTemplatePanel } from '@/components/simulation/task-template-panel'
 import { TaskChainPanel, type LogisticsNodeOption } from '@/components/simulation/task-chain-panel'
+import { ThroughputDashboard } from '@/components/simulation/throughput-dashboard'
+import { BottleneckAnalysis } from '@/components/simulation/bottleneck-analysis'
 import { SceneViewer } from '@/components/scene-3d/scene-viewer'
 import { GroundPlane } from '@/components/scene-3d/ground-plane'
 import { TubeNetwork } from '@/components/scene-3d/tube-network'
@@ -142,6 +144,7 @@ export default function SimulationPage() {
   // Logistics / task chain state
   const [taskChains, setTaskChains] = useState<TaskChain[]>([])
   const [throughputResult, setThroughputResult] = useState<ThroughputResult | null>(null)
+  const [throughputInput, setThroughputInput] = useState<ThroughputInput | null>(null)
   const [logisticsMetrics, setLogisticsMetrics] = useState<LogisticsMetrics | null>(null)
   const logisticsEngineRef = useRef<LogisticsEngine | null>(null)
 
@@ -277,6 +280,7 @@ export default function SimulationPage() {
   const computeThroughputEstimate = useCallback(() => {
     if (taskChains.length === 0) {
       setThroughputResult(null)
+      setThroughputInput(null)
       return
     }
 
@@ -297,20 +301,27 @@ export default function SimulationPage() {
       else if (node.type === 'workstation') stationThroughput.set(node.id, 60)
     }
 
-    const result = calculateThroughput({
+    const input: ThroughputInput = {
       taskChains,
       agvCount,
       agvSpeedMs: 1.5,
       distances,
       stationThroughput,
-    })
+    }
+    const result = calculateThroughput(input)
     setThroughputResult(result)
+    setThroughputInput(input)
   }, [taskChains, agvCount])
 
   // Auto-compute throughput when chains or AGV count change
   useEffect(() => {
     computeThroughputEstimate()
   }, [computeThroughputEstimate])
+
+  // Recalculate throughput with a different AGV count (for sensitivity analysis)
+  const handleRecalculate = useCallback((newAgvCount: number) => {
+    setAgvCount(newAgvCount)
+  }, [])
 
   const runLogisticsSimulation = useCallback(() => {
     if (taskChains.length === 0) return
@@ -1014,164 +1025,36 @@ export default function SimulationPage() {
               </div>
             )}
 
-            {/* ── Throughput Estimate (when task chains are defined) ── */}
+            {/* ── Throughput Estimate Dashboard ── */}
             {throughputResult && (
-              <div className="p-3 bg-panel-bg border border-emerald-200 rounded-[var(--radius-lg)]">
-                <div className="text-[11px] text-muted font-medium mb-2.5 flex items-center gap-1.5">
+              <div className="space-y-2.5">
+                <div className="text-[11px] text-muted font-medium flex items-center gap-1.5">
                   <PackageCheck size={11} className="text-emerald-500" />
                   {t('sim.throughputEstimate')}
                 </div>
-
-                {/* System throughput */}
-                <div className="flex items-end gap-2 mb-2">
-                  <div className="text-xl font-bold text-emerald-600">
-                    {throughputResult.systemThroughput.toFixed(1)}
-                  </div>
-                  <span className="text-[10px] text-muted mb-0.5">{t('sim.itemsPerHour')}</span>
-                </div>
-
-                {/* Bottleneck */}
-                {throughputResult.bottleneckStation && (
-                  <div className="text-[10px] text-amber-600 mb-2 flex items-center gap-1">
-                    <AlertTriangle size={9} />
-                    {t('sim.bottleneckStation')}: {throughputResult.bottleneckStation.nodeId}
-                    <span className="text-muted-foreground">({throughputResult.bottleneckStation.throughput.toFixed(0)} {t('sim.itemsPerHour')})</span>
-                  </div>
-                )}
-
-                {/* Key metrics */}
-                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                  <div>
-                    <div className="text-muted-foreground">{t('sim.avgCycleTime')}</div>
-                    <div className="font-medium">{throughputResult.avgTaskCycleTime.toFixed(1)}s</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">{t('sim.agvUtilization')}</div>
-                    <div className="font-medium">{(throughputResult.agvUtilization * 100).toFixed(0)}%</div>
-                  </div>
-                </div>
-
-                {/* Per-chain breakdown */}
-                {throughputResult.perChainResult.length > 0 && (
-                  <div className="mt-2.5 pt-2 border-t border-gray-100">
-                    <div className="text-[10px] text-muted-foreground font-medium mb-1.5">{t('sim.perChainBreakdown')}</div>
-                    {throughputResult.perChainResult.map(cr => (
-                      <div key={cr.chainId} className="text-[9px] mb-1.5 p-1.5 bg-gray-50 rounded">
-                        <div className="font-medium text-[10px] mb-1">{cr.chainName}</div>
-                        <div className="grid grid-cols-3 gap-1 text-muted-foreground">
-                          <div>{t('sim.transportTime')}: {cr.transportTimeSeconds.toFixed(1)}s</div>
-                          <div>{t('sim.processingTimeLabel')}: {cr.processingTimeSeconds.toFixed(1)}s</div>
-                          <div>{t('sim.emptyRunTime')}: {cr.emptyRunTimeSeconds.toFixed(1)}s</div>
-                        </div>
-                        <div className="mt-0.5 text-muted-foreground">
-                          {t('sim.cycleTime')}: {cr.cycleTimeSeconds.toFixed(1)}s → {cr.theoreticalThroughput.toFixed(1)} {t('sim.itemsPerHour')}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Recommendations */}
-                {throughputResult.recommendations.length > 0 && (
-                  <div className="mt-2.5 pt-2 border-t border-gray-100">
-                    <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
-                      <Lightbulb size={9} />
-                      {t('sim.recommendations')}
-                    </div>
-                    {throughputResult.recommendations.map((rec, i) => (
-                      <div key={i} className="text-[9px] text-muted-foreground ml-3 mb-0.5">• {rec}</div>
-                    ))}
-                  </div>
-                )}
+                <ThroughputDashboard
+                  result={throughputResult}
+                  logisticsMetrics={logisticsMetrics}
+                />
+                <BottleneckAnalysis
+                  result={throughputResult}
+                  input={throughputInput}
+                  onRecalculate={handleRecalculate}
+                />
               </div>
             )}
 
-            {/* ── Logistics Simulation Results ── */}
-            {logisticsMetrics && (
-              <div className="p-3 bg-panel-bg border border-blue-200 rounded-[var(--radius-lg)]">
-                <div className="text-[11px] text-muted font-medium mb-2.5 flex items-center gap-1.5">
+            {/* ── Logistics Simulation Results Dashboard ── */}
+            {logisticsMetrics && !throughputResult && (
+              <div className="space-y-2.5">
+                <div className="text-[11px] text-muted font-medium flex items-center gap-1.5">
                   <Link2 size={11} className="text-blue-500" />
                   {t('sim.logisticsResult')}
                 </div>
-
-                <div className="flex items-end gap-2 mb-2">
-                  <div className="text-xl font-bold text-blue-600">
-                    {logisticsMetrics.systemThroughput.toFixed(1)}
-                  </div>
-                  <span className="text-[10px] text-muted mb-0.5">{t('sim.itemsPerHour')}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[10px] mb-2">
-                  <div>
-                    <div className="text-muted-foreground">{t('sim.completedTasks')}</div>
-                    <div className="font-medium">{logisticsMetrics.completedChains}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">{t('sim.avgCycleTime')}</div>
-                    <div className="font-medium">{logisticsMetrics.avgCycleTimeSeconds.toFixed(1)}s</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">{t('sim.agvUtilization')}</div>
-                    <div className="font-medium">{(logisticsMetrics.agvUtilization * 100).toFixed(0)}%</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">{t('sim.simTime')}</div>
-                    <div className="font-medium font-mono">{formatTime(logisticsMetrics.totalSimTime)}</div>
-                  </div>
-                </div>
-
-                {/* Station details */}
-                {logisticsMetrics.stationDetails.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <div className="text-[10px] text-muted-foreground font-medium mb-1.5">{t('sim.stationDetails')}</div>
-                    <div className="space-y-1">
-                      {logisticsMetrics.stationDetails.map(s => (
-                        <div key={s.nodeId} className="flex items-center gap-2 text-[9px]">
-                          <span className="w-12 font-medium truncate">{s.nodeId}</span>
-                          <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                s.utilization > 0.7 ? 'bg-emerald-500' :
-                                s.utilization > 0.4 ? 'bg-amber-400' : 'bg-gray-300'
-                              }`}
-                              style={{ width: `${s.utilization * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-muted-foreground w-8 text-right">{(s.utilization * 100).toFixed(0)}%</span>
-                          <span className="text-muted-foreground w-6 text-right">{t('sim.queueLength')}: {s.currentQueueLength}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* AGV details */}
-                {logisticsMetrics.agvDetails.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <div className="text-[10px] text-muted-foreground font-medium mb-1.5">{t('sim.agvDetails')}</div>
-                    <div className="space-y-1">
-                      {logisticsMetrics.agvDetails.map(a => (
-                        <div key={a.agvId} className="flex items-center gap-2 text-[9px]">
-                          <CircleDot size={7} className={
-                            a.utilization > 0.7 ? 'text-emerald-500' :
-                            a.utilization > 0.4 ? 'text-amber-500' : 'text-gray-300'
-                          } />
-                          <span className="w-10 font-medium">{a.agvId}</span>
-                          <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                a.utilization > 0.7 ? 'bg-emerald-500' :
-                                a.utilization > 0.4 ? 'bg-amber-400' : 'bg-gray-300'
-                              }`}
-                              style={{ width: `${a.utilization * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-muted-foreground w-8 text-right">{(a.utilization * 100).toFixed(0)}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <ThroughputDashboard
+                  result={null}
+                  logisticsMetrics={logisticsMetrics}
+                />
               </div>
             )}
 

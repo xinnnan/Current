@@ -248,6 +248,26 @@ export const translations: Record<Locale, Record<string, string>> = {
     'sim.queueLength': 'Queue',
     'sim.processed': 'Processed',
 
+    // ── Throughput Dashboard & Bottleneck ──
+    'sim.throughputDashboard': 'System Throughput',
+    'sim.bottleneckAnalysis': 'Bottleneck Analysis',
+    'sim.optimization': 'Optimization',
+    'sim.stationThroughput': 'Station Throughput',
+    'sim.agvUtilizationChart': 'AGV Utilization',
+    'sim.cycleTimeDistribution': 'Cycle Time Distribution',
+    'sim.sensitivityAnalysis': 'Sensitivity Analysis',
+    'sim.agvCountRange': 'AGV Count Range',
+    'sim.estimatedThroughput': 'Estimated Throughput',
+    'sim.bottleneckDetected': 'Bottleneck Detected',
+    'sim.noBottleneck': 'No significant bottleneck detected',
+    'sim.min': 'Min',
+    'sim.avg': 'Avg',
+    'sim.max': 'Max',
+    'sim.stationCol': 'Station',
+    'sim.utilizationCol': 'Utilization',
+    'sim.throughputCol': 'Throughput',
+    'sim.clickToRecalculate': 'Click a row to recalculate with that AGV count',
+
     // ── Settings Page ──
     'settings.title': 'Settings',
     'settings.preferences': 'Preferences',
@@ -605,6 +625,26 @@ export const translations: Record<Locale, Record<string, string>> = {
     'sim.stationDetails': '站点详情',
     'sim.queueLength': '队列',
     'sim.processed': '已处理',
+
+    // ── 吞吐量仪表板与瓶颈分析 ──
+    'sim.throughputDashboard': '系统吞吐量',
+    'sim.bottleneckAnalysis': '瓶颈分析',
+    'sim.optimization': '优化',
+    'sim.stationThroughput': '站点吞吐量',
+    'sim.agvUtilizationChart': 'AGV 利用率',
+    'sim.cycleTimeDistribution': '周期时间分布',
+    'sim.sensitivityAnalysis': '敏感性分析',
+    'sim.agvCountRange': 'AGV 数量范围',
+    'sim.estimatedThroughput': '预估吞吐量',
+    'sim.bottleneckDetected': '检测到瓶颈',
+    'sim.noBottleneck': '未检测到显著瓶颈',
+    'sim.min': '最小',
+    'sim.avg': '平均',
+    'sim.max': '最大',
+    'sim.stationCol': '站点',
+    'sim.utilizationCol': '利用率',
+    'sim.throughputCol': '吞吐量',
+    'sim.clickToRecalculate': '点击行可使用该 AGV 数量重新计算',
 
     // ── 设置页 ──
     'settings.title': '设置',
