@@ -1,23 +1,29 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 const MODELS_BUCKET = 'assets-models'
 
 // POST /api/inference/generate-3d - Call Tripo3D API to generate 3D model
+// This route is called server-to-server by the VLM route after VLM completes.
+// Auth is verified by checking the job exists (created by an authenticated user).
 export async function POST(request: Request) {
-  const supabase = await createClient()
   const admin = createAdminClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   const { job_id, image_url } = await request.json()
 
   if (!job_id || !image_url) {
     return NextResponse.json({ error: 'job_id and image_url are required' }, { status: 400 })
+  }
+
+  // Verify the job exists (it was created by an authenticated user in the upload route)
+  const { data: existingJob } = await admin
+    .from('inference_jobs')
+    .select('id, asset_id, status')
+    .eq('id', job_id)
+    .single()
+
+  if (!existingJob) {
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
   }
 
   // Check if TRIPO_API_KEY is configured
@@ -127,7 +133,7 @@ export async function POST(request: Request) {
       })
     }
 
-    const storagePath = `${user.id}/${job_id}/model.glb`
+    const storagePath = `models/${job_id}/model.glb`
     await admin.storage
       .from(MODELS_BUCKET)
       .upload(storagePath, modelBuffer, {

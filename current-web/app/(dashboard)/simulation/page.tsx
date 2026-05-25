@@ -367,6 +367,9 @@ export default function SimulationPage() {
   const runLogisticsSimulation = useCallback(() => {
     if (taskChains.length === 0) return
 
+    setStatus('running')
+    setProgress(0)
+
     // Build logistics nodes from DEMO_LOGISTICS_NODES
     const logisticsNodes = DEMO_LOGISTICS_NODES.map(opt => {
       const demoNode = DEMO_NODES.find(n => n.id === opt.id)
@@ -396,8 +399,24 @@ export default function SimulationPage() {
     const engine = new LogisticsEngine(config)
     logisticsEngineRef.current = engine
 
-    const metrics = engine.run(1.0)
-    setLogisticsMetrics(metrics)
+    // Simulate progress for visual feedback
+    let progressStep = 0
+    const totalProgressSteps = 20
+    const progressInterval = setInterval(() => {
+      progressStep++
+      setProgress(progressStep / totalProgressSteps)
+      if (progressStep >= totalProgressSteps) {
+        clearInterval(progressInterval)
+      }
+    }, 50)
+
+    // Run simulation (synchronous, may take a moment)
+    setTimeout(() => {
+      const metrics = engine.run(1.0)
+      setLogisticsMetrics(metrics)
+      setStatus('completed')
+      setProgress(1)
+    }, 100)
   }, [taskChains, agvCount, duration])
 
   const runSimulation = useCallback(() => {
@@ -461,10 +480,10 @@ export default function SimulationPage() {
 
       const totalSteps = 100
       const stepTime = duration / totalSteps
-      const currentStep = Math.round(progress * totalSteps)
+      let step = Math.round(progress * totalSteps)
 
       const tick = () => {
-        if (currentStep >= totalSteps) {
+        if (step >= totalSteps) {
           setMetrics(engine.getMetrics())
           setStatus('completed')
           setProgress(1)
@@ -481,7 +500,8 @@ export default function SimulationPage() {
           }
         }
 
-        setProgress((currentStep + 1) / totalSteps)
+        step++
+        setProgress(step / totalSteps)
         setMetrics(engine.getMetrics())
         setAgvStates(engine.getAGVStates())
 

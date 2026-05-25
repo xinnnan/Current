@@ -38,12 +38,43 @@ export interface MapEditorProps {
   onToolAction?: (action: string, data: Record<string, unknown>) => void
 }
 
+export interface LoadedNode {
+  id: string
+  x: number
+  y: number
+  node_type: string
+  label?: string | null
+  properties?: Record<string, unknown> | null
+}
+
+export interface LoadedEdge {
+  id: string
+  from_node_id: string
+  to_node_id: string
+  fromX: number
+  fromY: number
+  toX: number
+  toY: number
+}
+
+export interface LoadedAssetInstance {
+  id: string
+  asset_id: string
+  position_x: number
+  position_y: number
+  rotation: number
+  name?: string
+  category?: string
+}
+
 export interface MapEditorRef {
   importFile: () => void
   getCanvas: () => Canvas | null
   getPlacedAssets: () => PlacedAsset[]
   loadImageFromUrl: (url: string) => void
   resetCalibState: () => void
+  /** Render previously saved data onto the canvas (no persistence callbacks fired) */
+  renderLoadedData: (data: { nodes: LoadedNode[]; edges: LoadedEdge[]; assets: LoadedAssetInstance[] }) => void
 }
 
 const ASSET_COLORS: Record<string, string> = {
@@ -140,6 +171,100 @@ export const MapEditor = forwardRef<MapEditorRef, MapEditorProps>(function MapEd
           calibPreviewLine.current = null
         }
         canvas.renderAll()
+      }
+    },
+    renderLoadedData: ({ nodes, edges, assets: loadedAssets }) => {
+      const canvas = fabricRef.current
+      if (!canvas) return
+
+      // Render nodes
+      for (const node of nodes) {
+        const isLogistics = ['loading_port', 'unloading_port', 'workstation'].includes(node.node_type)
+        if (isLogistics) {
+          // Render logistics node visually (simplified version without calling addLogisticsNode to avoid persistence)
+          const RADIUS = 12
+          const nodeType = node.node_type as 'loading_port' | 'unloading_port' | 'workstation'
+          const colors: Record<string, { fill: string; stroke: string }> = {
+            loading_port: { fill: '#22c55e', stroke: '#15803d' },
+            unloading_port: { fill: '#ef4444', stroke: '#b91c1c' },
+            workstation: { fill: '#3b82f6', stroke: '#1e40af' },
+          }
+          const color = colors[nodeType] || colors.workstation
+
+          if (nodeType === 'workstation') {
+            const SIZE = 24
+            const bg = new Rect({ left: 0, top: 0, width: SIZE, height: SIZE, fill: color.fill, stroke: color.stroke, strokeWidth: 2, rx: 3, ry: 3 })
+            const text = new Text('W', { left: SIZE / 2, top: SIZE / 2, fontSize: 14, fontWeight: 'bold', fill: 'white', originX: 'center', originY: 'center', fontFamily: 'sans-serif' })
+            const group = new Group([bg, text], { left: node.x - SIZE / 2, top: node.y - SIZE / 2 })
+            const g = group as unknown as Record<string, unknown>
+            g._nodeId = node.id; g._nodeType = nodeType
+            g._logisticsConfig = (node.properties as Record<string, unknown>)?.logistics_config || {}
+            canvas.add(group)
+          } else {
+            const bg = new Circle({ left: 0, top: 0, radius: RADIUS, fill: color.fill, stroke: color.stroke, strokeWidth: 2 })
+            const arrowChar = nodeType === 'loading_port' ? '↑' : '↓'
+            const text = new Text(arrowChar, { left: RADIUS, top: RADIUS, fontSize: 14, fontWeight: 'bold', fill: 'white', originX: 'center', originY: 'center', fontFamily: 'sans-serif' })
+            const group = new Group([bg, text], { left: node.x - RADIUS, top: node.y - RADIUS })
+            const g = group as unknown as Record<string, unknown>
+            g._nodeId = node.id; g._nodeType = nodeType
+            g._logisticsConfig = (node.properties as Record<string, unknown>)?.logistics_config || {}
+            canvas.add(group)
+          }
+        } else {
+          // Regular waypoint
+          const marker = new Circle({
+            left: node.x - 6, top: node.y - 6, radius: 6,
+            fill: '#3b82f6', stroke: '#1e40af', strokeWidth: 2,
+          })
+          const m = marker as unknown as Record<string, unknown>
+          m._nodeId = node.id
+          canvas.add(marker)
+          if (node.label) {
+            const label = new Text(node.label, {
+              left: node.x + 10, top: node.y - 6, fontSize: 10, fill: '#64748b', fontFamily: 'sans-serif',
+            })
+            canvas.add(label)
+          }
+        }
+      }
+
+      // Render edges
+      for (const edge of edges) {
+        const line = new Line([edge.fromX, edge.fromY, edge.toX, edge.toY], {
+          stroke: '#3b82f6', strokeWidth: 3, selectable: true,
+        })
+        const l = line as unknown as Record<string, unknown>
+        l._edgeId = edge.id
+        canvas.add(line)
+      }
+
+      // Render placed assets
+      for (const inst of loadedAssets) {
+        const cat = inst.category || 'other'
+        const color = ASSET_COLORS[cat] || ASSET_COLORS.other
+        const size = 40
+        const rect = new Rect({
+          left: inst.position_x - size / 2, top: inst.position_y - size / 2,
+          width: size, height: size, fill: color, stroke: 'white', strokeWidth: 2, rx: 4, ry: 4,
+          angle: inst.rotation || 0,
+        })
+        const r = rect as unknown as Record<string, unknown>
+        r._instanceId = inst.id; r._assetId = inst.asset_id
+        canvas.add(rect)
+
+        // Track in placedAssetsRef
+        const placed: PlacedAsset = {
+          id: inst.id, assetId: inst.asset_id,
+          name: inst.name || `Asset ${inst.asset_id.slice(0, 6)}`,
+          x: inst.position_x, y: inst.position_y,
+          width: size, height: size, rotation: inst.rotation || 0, category: cat,
+        }
+        placedAssetsRef.current.push(placed)
+      }
+
+      canvas.renderAll()
+      if (nodes.length > 0 || edges.length > 0 || loadedAssets.length > 0) {
+        setHasContent(true)
       }
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps

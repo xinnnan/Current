@@ -244,29 +244,50 @@ export default function MapPage() {
           }
 
           // Load route nodes
+          let loadedNodes: { id: string; x: number; y: number; node_type: string; label?: string | null; properties?: Record<string, unknown> | null }[] = []
           try {
             const nodesRes = await fetch(`/api/route-nodes?map_id=${currentMap.id}`)
             if (nodesRes.ok) {
               const nodesData = await nodesRes.json()
-              setNodeCount((nodesData.nodes || []).length)
+              loadedNodes = nodesData.nodes || []
+              setNodeCount(loadedNodes.length)
             }
           } catch { /* ignore */ }
 
-          // Load route edges
+          // Load route edges — need node coordinates for rendering
+          let loadedEdges: { id: string; from_node_id: string; to_node_id: string; fromX: number; fromY: number; toX: number; toY: number }[] = []
           try {
             const edgesRes = await fetch(`/api/route-edges?map_id=${currentMap.id}`)
             if (edgesRes.ok) {
               const edgesData = await edgesRes.json()
-              setEdgeCount((edgesData.edges || []).length)
+              const rawEdges = edgesData.edges || []
+              setEdgeCount(rawEdges.length)
+              // Resolve node coordinates for each edge
+              const nodeMap = new Map(loadedNodes.map(n => [n.id, n]))
+              loadedEdges = rawEdges.map((edge: { id: string; from_node_id: string; to_node_id: string }) => {
+                const fromNode = nodeMap.get(edge.from_node_id)
+                const toNode = nodeMap.get(edge.to_node_id)
+                return {
+                  id: edge.id,
+                  from_node_id: edge.from_node_id,
+                  to_node_id: edge.to_node_id,
+                  fromX: fromNode?.x ?? 0,
+                  fromY: fromNode?.y ?? 0,
+                  toX: toNode?.x ?? 0,
+                  toY: toNode?.y ?? 0,
+                }
+              })
             }
           } catch { /* ignore */ }
 
           // Load placed assets (asset instances)
+          let loadedAssetInstances: { id: string; asset_id: string; position_x: number; position_y: number; rotation: number; name?: string; category?: string }[] = []
           try {
             const instancesRes = await fetch(`/api/asset-instances?map_id=${currentMap.id}`)
             if (instancesRes.ok) {
               const instancesData = await instancesRes.json()
               const instances = (instancesData.instances || []) as InstanceRecord[]
+              loadedAssetInstances = instances
               const placed: PlacedAsset[] = instances.map(inst => ({
                 id: inst.id,
                 assetId: inst.asset_id,
@@ -284,11 +305,20 @@ export default function MapPage() {
 
           // Restore base image if exists
           if (currentMap.base_image_url) {
-            // The editor will load the image via importFile or direct URL
-            // We pass it through a custom method
             setTimeout(() => {
               editorRef.current?.loadImageFromUrl?.(currentMap.base_image_url!)
             }, 500)
+          }
+
+          // Render loaded nodes/edges/assets onto canvas (after a short delay to ensure canvas is ready)
+          if (loadedNodes.length > 0 || loadedEdges.length > 0 || loadedAssetInstances.length > 0) {
+            setTimeout(() => {
+              editorRef.current?.renderLoadedData?.({
+                nodes: loadedNodes,
+                edges: loadedEdges,
+                assets: loadedAssetInstances,
+              })
+            }, 600)
           }
         }
       } catch (err) {

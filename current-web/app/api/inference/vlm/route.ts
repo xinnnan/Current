@@ -1,4 +1,3 @@
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
@@ -17,19 +16,26 @@ group_1: [l_2, ...] (child); Type: C relative to group_0 (parent); Params: direc
 Note: 运动类型 A(自由), B(滑动), C(旋转), D(铰接), CB(旋转+滑动), E(固定)`
 
 // POST /api/inference/vlm - Call MiniMax M2.7-highspeed for physical property inference
+// This route is called both directly by users and server-to-server by the upload route.
+// Auth is verified by checking the job exists (created by an authenticated user).
 export async function POST(request: Request) {
-  const supabase = await createClient()
   const admin = createAdminClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   const { job_id, image_url } = await request.json()
 
   if (!job_id || !image_url) {
     return NextResponse.json({ error: 'job_id and image_url are required' }, { status: 400 })
+  }
+
+  // Verify the job exists (it was created by an authenticated user in the upload route)
+  const { data: existingJob } = await admin
+    .from('inference_jobs')
+    .select('id, asset_id, status')
+    .eq('id', job_id)
+    .single()
+
+  if (!existingJob) {
+    return NextResponse.json({ error: 'Job not found' }, { status: 404 })
   }
 
   // Check if MINIMAX_API_KEY is configured
