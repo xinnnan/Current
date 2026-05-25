@@ -456,26 +456,73 @@ export default function MapPage() {
     } else if (action === 'edge_added') {
       // Persist route edge to database
       if (mapRecord) {
-        const fromNodeId = data.fromNodeId as string
-        const toNodeId = data.toNodeId as string
+        let fromNodeId = data.fromNodeId as string | undefined
+        let toNodeId = data.toNodeId as string | undefined
         const length = data.length as number | undefined
-        try {
-          const res = await fetch('/api/route-edges', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              map_id: mapRecord.id,
-              from_node_id: fromNodeId,
-              to_node_id: toNodeId,
-              length,
-              speed_limit: 1.5,
-              direction: 'bidirectional',
-            }),
-          })
-          if (res.ok) {
-            setEdgeCount(prev => prev + 1)
-          }
-        } catch { /* ignore */ }
+
+        // If node IDs are missing (line drawn between arbitrary points),
+        // create implicit route nodes at the line endpoints
+        if (!fromNodeId && data.fromX != null && data.fromY != null) {
+          try {
+            const nodeRes = await fetch('/api/route-nodes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                map_id: mapRecord.id,
+                x: data.fromX,
+                y: data.fromY,
+                node_type: 'waypoint',
+                label: null,
+              }),
+            })
+            if (nodeRes.ok) {
+              const nodeData = await nodeRes.json()
+              fromNodeId = nodeData.node.id
+              setNodeCount(prev => prev + 1)
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (!toNodeId && data.toX != null && data.toY != null) {
+          try {
+            const nodeRes = await fetch('/api/route-nodes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                map_id: mapRecord.id,
+                x: data.toX,
+                y: data.toY,
+                node_type: 'waypoint',
+                label: null,
+              }),
+            })
+            if (nodeRes.ok) {
+              const nodeData = await nodeRes.json()
+              toNodeId = nodeData.node.id
+              setNodeCount(prev => prev + 1)
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (fromNodeId && toNodeId) {
+          try {
+            const res = await fetch('/api/route-edges', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                map_id: mapRecord.id,
+                from_node_id: fromNodeId,
+                to_node_id: toNodeId,
+                length,
+                speed_limit: 1.5,
+                direction: 'bidirectional',
+              }),
+            })
+            if (res.ok) {
+              setEdgeCount(prev => prev + 1)
+            }
+          } catch { /* ignore */ }
+        }
       }
     } else if (action === 'zone_added') {
       // Persist constraint zone to database

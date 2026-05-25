@@ -99,6 +99,11 @@ export default function SimulationPage() {
               if (config.duration_s) setDuration(config.duration_s as number)
               if (config.agv_count) setAgvCount(config.agv_count as number)
               if (config.tasks_per_hour) setTasksPerHour(config.tasks_per_hour as number)
+              // Restore task chains
+              if (config.task_chains) setTaskChains(config.task_chains as TaskChain[])
+              // Restore task templates and enabled templates
+              if (config.task_templates) setTaskTemplates(config.task_templates as TaskTemplate[])
+              if (config.enabled_templates) setEnabledTemplates(new Set(config.enabled_templates as string[]))
             }
           } else {
             // Create a new simulation record
@@ -155,7 +160,7 @@ export default function SimulationPage() {
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 500 })
   const viewMode = useViewStore((s) => s.viewMode)
 
-  // Save config changes to database
+  // Save config changes to database (including task chains and templates)
   const saveConfig = useCallback(async () => {
     if (!simRecordId) return
     try {
@@ -163,11 +168,27 @@ export default function SimulationPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { mode, speed_multiplier: speedMultiplier, duration_s: duration, agv_count: agvCount, tasks_per_hour: tasksPerHour },
+          config: {
+            mode,
+            speed_multiplier: speedMultiplier,
+            duration_s: duration,
+            agv_count: agvCount,
+            tasks_per_hour: tasksPerHour,
+            task_chains: taskChains,
+            task_templates: taskTemplates,
+            enabled_templates: [...enabledTemplates],
+          },
         }),
       })
     } catch { /* ignore */ }
-  }, [simRecordId, mode, speedMultiplier, duration, agvCount, tasksPerHour])
+  }, [simRecordId, mode, speedMultiplier, duration, agvCount, tasksPerHour, taskChains, taskTemplates, enabledTemplates])
+
+  // Auto-save config when task chains or templates change (debounced)
+  useEffect(() => {
+    if (!simRecordId) return
+    const timer = setTimeout(() => { saveConfig() }, 1000)
+    return () => clearTimeout(timer)
+  }, [taskChains, taskTemplates, enabledTemplates, simRecordId, saveConfig])
 
   // Save simulation results to database
   const saveResults = useCallback(async (results: Record<string, unknown>) => {

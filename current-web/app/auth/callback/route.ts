@@ -8,6 +8,10 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const { createServerClient } = await import('@supabase/ssr')
+    
+    // Create a response early so we can set cookies on it
+    let response = NextResponse.redirect(`${origin}${next}`)
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
@@ -17,8 +21,12 @@ export async function GET(request: NextRequest) {
             return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
+            // Set cookies on both the request (for subsequent reads) and the response (for the browser)
+            cookiesToSet.forEach(({ name, value }) =>
               request.cookies.set(name, value)
+            )
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
             )
           },
         },
@@ -27,7 +35,7 @@ export async function GET(request: NextRequest) {
     
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+      return response
     }
   }
 
