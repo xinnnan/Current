@@ -5,12 +5,15 @@ import { useSearchParams } from 'next/navigation'
 import {
   Play, Pause, FastForward, BarChart3, Settings,
   RotateCcw, Truck, Clock, Activity, AlertTriangle, Zap,
-  TrendingUp, TrendingDown, Minus, CircleDot,
+  TrendingUp, TrendingDown, Minus, CircleDot, Link2, Lightbulb, PackageCheck,
 } from 'lucide-react'
 import { SimulationEngine, type SimConfig, type SimMetrics, type AGVAnimationFrame } from '@/lib/simulation/engine'
 import { RCSScheduler, DEFAULT_TASK_TEMPLATES, type TaskTemplate, type ConflictResolution } from '@/lib/simulation/rcs-scheduler'
+import { calculateThroughput, type TaskChain, type ThroughputResult } from '@/lib/simulation/throughput-calculator'
+import { LogisticsEngine, type LogisticsEngineConfig, type LogisticsMetrics } from '@/lib/simulation/logistics-engine'
 import { HeatmapOverlay, HeatmapLegend, type HeatmapEdge } from '@/components/simulation/heatmap-overlay'
 import { TaskTemplatePanel } from '@/components/simulation/task-template-panel'
+import { TaskChainPanel, type LogisticsNodeOption } from '@/components/simulation/task-chain-panel'
 import { SceneViewer } from '@/components/scene-3d/scene-viewer'
 import { GroundPlane } from '@/components/scene-3d/ground-plane'
 import { TubeNetwork } from '@/components/scene-3d/tube-network'
@@ -51,6 +54,16 @@ const DEMO_EDGES = [
   { id: 'GA', from: 'G', to: 'A', length: 18.0, speedLimit: 2.0, isMutexZone: false },
   { id: 'CH', from: 'C', to: 'H', length: 18.0, speedLimit: 1.5, isMutexZone: false },
   { id: 'FH', from: 'F', to: 'H', length: 20.6, speedLimit: 1.5, isMutexZone: true },
+]
+
+// Demo logistics nodes (derived from DEMO_NODES for logistics simulation)
+const DEMO_LOGISTICS_NODES: LogisticsNodeOption[] = [
+  { id: 'A', label: 'Loading Port A', type: 'loading_port' },
+  { id: 'G', label: 'Loading Port G', type: 'loading_port' },
+  { id: 'C', label: 'Workstation C', type: 'workstation' },
+  { id: 'E', label: 'Workstation E', type: 'workstation' },
+  { id: 'H', label: 'Unloading Port H', type: 'unloading_port' },
+  { id: 'F', label: 'Unloading Port F', type: 'unloading_port' },
 ]
 
 export default function SimulationPage() {
@@ -125,6 +138,12 @@ export default function SimulationPage() {
     new Set(['tpl_transport_standard', 'tpl_charge', 'tpl_park'])
   )
   const [conflictResolutions, setConflictResolutions] = useState<ConflictResolution[]>([])
+
+  // Logistics / task chain state
+  const [taskChains, setTaskChains] = useState<TaskChain[]>([])
+  const [throughputResult, setThroughputResult] = useState<ThroughputResult | null>(null)
+  const [logisticsMetrics, setLogisticsMetrics] = useState<LogisticsMetrics | null>(null)
+  const logisticsEngineRef = useRef<LogisticsEngine | null>(null)
 
   const engineRef = useRef<SimulationEngine | null>(null)
   const rcsRef = useRef<RCSScheduler | null>(null)
@@ -252,6 +271,83 @@ export default function SimulationPage() {
     })
   }, [])
 
+  // --- Logistics callbacks ---
+
+  // Compute throughput estimate whenever task chains change
+  const computeThroughputEstimate = useCallback(() => {
+    if (taskChains.length === 0) {
+      setThroughputResult(null)
+      return
+    }
+
+    // Build distance map from DEMO_EDGES
+    const distances = new Map<string, number>()
+    for (const edge of DEMO_EDGES) {
+      const key1 = `${edge.from}|${edge.to}`
+      const key2 = `${edge.to}|${edge.from}`
+      distances.set(key1, edge.length)
+      distances.set(key2, edge.length)
+    }
+
+    // Build station throughput from node types
+    const stationThroughput = new Map<string, number>()
+    for (const node of DEMO_LOGISTICS_NODES) {
+      if (node.type === 'loading_port') stationThroughput.set(node.id, 120)
+      else if (node.type === 'unloading_port') stationThroughput.set(node.id, 100)
+      else if (node.type === 'workstation') stationThroughput.set(node.id, 60)
+    }
+
+    const result = calculateThroughput({
+      taskChains,
+      agvCount,
+      agvSpeedMs: 1.5,
+      distances,
+      stationThroughput,
+    })
+    setThroughputResult(result)
+  }, [taskChains, agvCount])
+
+  // Auto-compute throughput when chains or AGV count change
+  useEffect(() => {
+    computeThroughputEstimate()
+  }, [computeThroughputEstimate])
+
+  const runLogisticsSimulation = useCallback(() => {
+    if (taskChains.length === 0) return
+
+    // Build logistics nodes from DEMO_LOGISTICS_NODES
+    const logisticsNodes = DEMO_LOGISTICS_NODES.map(opt => {
+      const demoNode = DEMO_NODES.find(n => n.id === opt.id)
+      return {
+        id: opt.id,
+        x: demoNode?.x ?? 0,
+        y: demoNode?.y ?? 0,
+        type: opt.type,
+        processingTimeSeconds: 30,
+        bufferCapacity: 5,
+        throughputItemsPerHour: opt.type === 'workstation' ? 60 : 120,
+      }
+    })
+
+    const config: LogisticsEngineConfig = {
+      nodes: logisticsNodes,
+      edges: DEMO_EDGES.map(e => ({ fromNodeId: e.from, toNodeId: e.to, distanceMeters: e.length })),
+      taskChains,
+      agvs: Array.from({ length: agvCount }, (_, i) => ({
+        id: `AGV-${i + 1}`,
+        maxSpeedMs: 1.5,
+        startNodeId: DEMO_LOGISTICS_NODES[0]?.id ?? 'A',
+      })),
+      durationSeconds: duration,
+    }
+
+    const engine = new LogisticsEngine(config)
+    logisticsEngineRef.current = engine
+
+    const metrics = engine.run(1.0)
+    setLogisticsMetrics(metrics)
+  }, [taskChains, agvCount, duration])
+
   const runSimulation = useCallback(() => {
     const config = createConfig()
     const engine = new SimulationEngine(config)
@@ -350,8 +446,10 @@ export default function SimulationPage() {
     setMetrics(null)
     setAgvStates([])
     setConflictResolutions([])
+    setLogisticsMetrics(null)
     engineRef.current = null
     rcsRef.current = null
+    logisticsEngineRef.current = null
   }, [])
 
   // Keyboard shortcuts
@@ -557,6 +655,27 @@ export default function SimulationPage() {
                 onAddTemplate={handleAddTemplate}
                 onRemoveTemplate={handleRemoveTemplate}
               />
+            )}
+
+            {/* Task chain panel (logistics mode) */}
+            <div className="pt-2 border-t border-panel-border">
+              <TaskChainPanel
+                chains={taskChains}
+                nodeOptions={DEMO_LOGISTICS_NODES}
+                onUpdateChains={setTaskChains}
+              />
+            </div>
+
+            {/* Logistics simulation run button */}
+            {taskChains.length > 0 && (
+              <button
+                onClick={runLogisticsSimulation}
+                disabled={status !== 'idle'}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-md text-xs font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                <Link2 size={12} />
+                {t('sim.runLogistics')}
+              </button>
             )}
 
             <div className="p-3 bg-blue-50 rounded-md text-xs text-blue-700 space-y-1">
@@ -892,6 +1011,167 @@ export default function SimulationPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* ── Throughput Estimate (when task chains are defined) ── */}
+            {throughputResult && (
+              <div className="p-3 bg-panel-bg border border-emerald-200 rounded-[var(--radius-lg)]">
+                <div className="text-[11px] text-muted font-medium mb-2.5 flex items-center gap-1.5">
+                  <PackageCheck size={11} className="text-emerald-500" />
+                  {t('sim.throughputEstimate')}
+                </div>
+
+                {/* System throughput */}
+                <div className="flex items-end gap-2 mb-2">
+                  <div className="text-xl font-bold text-emerald-600">
+                    {throughputResult.systemThroughput.toFixed(1)}
+                  </div>
+                  <span className="text-[10px] text-muted mb-0.5">{t('sim.itemsPerHour')}</span>
+                </div>
+
+                {/* Bottleneck */}
+                {throughputResult.bottleneckStation && (
+                  <div className="text-[10px] text-amber-600 mb-2 flex items-center gap-1">
+                    <AlertTriangle size={9} />
+                    {t('sim.bottleneckStation')}: {throughputResult.bottleneckStation.nodeId}
+                    <span className="text-muted-foreground">({throughputResult.bottleneckStation.throughput.toFixed(0)} {t('sim.itemsPerHour')})</span>
+                  </div>
+                )}
+
+                {/* Key metrics */}
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div>
+                    <div className="text-muted-foreground">{t('sim.avgCycleTime')}</div>
+                    <div className="font-medium">{throughputResult.avgTaskCycleTime.toFixed(1)}s</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">{t('sim.agvUtilization')}</div>
+                    <div className="font-medium">{(throughputResult.agvUtilization * 100).toFixed(0)}%</div>
+                  </div>
+                </div>
+
+                {/* Per-chain breakdown */}
+                {throughputResult.perChainResult.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-gray-100">
+                    <div className="text-[10px] text-muted-foreground font-medium mb-1.5">{t('sim.perChainBreakdown')}</div>
+                    {throughputResult.perChainResult.map(cr => (
+                      <div key={cr.chainId} className="text-[9px] mb-1.5 p-1.5 bg-gray-50 rounded">
+                        <div className="font-medium text-[10px] mb-1">{cr.chainName}</div>
+                        <div className="grid grid-cols-3 gap-1 text-muted-foreground">
+                          <div>{t('sim.transportTime')}: {cr.transportTimeSeconds.toFixed(1)}s</div>
+                          <div>{t('sim.processingTimeLabel')}: {cr.processingTimeSeconds.toFixed(1)}s</div>
+                          <div>{t('sim.emptyRunTime')}: {cr.emptyRunTimeSeconds.toFixed(1)}s</div>
+                        </div>
+                        <div className="mt-0.5 text-muted-foreground">
+                          {t('sim.cycleTime')}: {cr.cycleTimeSeconds.toFixed(1)}s → {cr.theoreticalThroughput.toFixed(1)} {t('sim.itemsPerHour')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {throughputResult.recommendations.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-gray-100">
+                    <div className="text-[10px] text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                      <Lightbulb size={9} />
+                      {t('sim.recommendations')}
+                    </div>
+                    {throughputResult.recommendations.map((rec, i) => (
+                      <div key={i} className="text-[9px] text-muted-foreground ml-3 mb-0.5">• {rec}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Logistics Simulation Results ── */}
+            {logisticsMetrics && (
+              <div className="p-3 bg-panel-bg border border-blue-200 rounded-[var(--radius-lg)]">
+                <div className="text-[11px] text-muted font-medium mb-2.5 flex items-center gap-1.5">
+                  <Link2 size={11} className="text-blue-500" />
+                  {t('sim.logisticsResult')}
+                </div>
+
+                <div className="flex items-end gap-2 mb-2">
+                  <div className="text-xl font-bold text-blue-600">
+                    {logisticsMetrics.systemThroughput.toFixed(1)}
+                  </div>
+                  <span className="text-[10px] text-muted mb-0.5">{t('sim.itemsPerHour')}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[10px] mb-2">
+                  <div>
+                    <div className="text-muted-foreground">{t('sim.completedTasks')}</div>
+                    <div className="font-medium">{logisticsMetrics.completedChains}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">{t('sim.avgCycleTime')}</div>
+                    <div className="font-medium">{logisticsMetrics.avgCycleTimeSeconds.toFixed(1)}s</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">{t('sim.agvUtilization')}</div>
+                    <div className="font-medium">{(logisticsMetrics.agvUtilization * 100).toFixed(0)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">{t('sim.simTime')}</div>
+                    <div className="font-medium font-mono">{formatTime(logisticsMetrics.totalSimTime)}</div>
+                  </div>
+                </div>
+
+                {/* Station details */}
+                {logisticsMetrics.stationDetails.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="text-[10px] text-muted-foreground font-medium mb-1.5">{t('sim.stationDetails')}</div>
+                    <div className="space-y-1">
+                      {logisticsMetrics.stationDetails.map(s => (
+                        <div key={s.nodeId} className="flex items-center gap-2 text-[9px]">
+                          <span className="w-12 font-medium truncate">{s.nodeId}</span>
+                          <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                s.utilization > 0.7 ? 'bg-emerald-500' :
+                                s.utilization > 0.4 ? 'bg-amber-400' : 'bg-gray-300'
+                              }`}
+                              style={{ width: `${s.utilization * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-muted-foreground w-8 text-right">{(s.utilization * 100).toFixed(0)}%</span>
+                          <span className="text-muted-foreground w-6 text-right">{t('sim.queueLength')}: {s.currentQueueLength}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* AGV details */}
+                {logisticsMetrics.agvDetails.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="text-[10px] text-muted-foreground font-medium mb-1.5">{t('sim.agvDetails')}</div>
+                    <div className="space-y-1">
+                      {logisticsMetrics.agvDetails.map(a => (
+                        <div key={a.agvId} className="flex items-center gap-2 text-[9px]">
+                          <CircleDot size={7} className={
+                            a.utilization > 0.7 ? 'text-emerald-500' :
+                            a.utilization > 0.4 ? 'text-amber-500' : 'text-gray-300'
+                          } />
+                          <span className="w-10 font-medium">{a.agvId}</span>
+                          <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                a.utilization > 0.7 ? 'bg-emerald-500' :
+                                a.utilization > 0.4 ? 'bg-amber-400' : 'bg-gray-300'
+                              }`}
+                              style={{ width: `${a.utilization * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-muted-foreground w-8 text-right">{(a.utilization * 100).toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
