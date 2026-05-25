@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 // GET /api/inference/[jobId] - Get inference job status
@@ -14,7 +15,10 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { data: job, error } = await supabase
+  // Use admin client to bypass RLS for reading job status
+  const admin = createAdminClient()
+
+  const { data: job, error } = await admin
     .from('inference_jobs')
     .select('id, status, progress, current_step, error_message, output_metadata, created_at, updated_at, asset_id')
     .eq('id', jobId)
@@ -27,7 +31,7 @@ export async function GET(
   // Also get the asset if available
   let asset = null
   if (job.asset_id) {
-    const { data: assetData } = await supabase
+    const { data: assetData } = await admin
       .from('assets')
       .select('id, name, category, model_url, thumbnail_url, physical_params, parts')
       .eq('id', job.asset_id)

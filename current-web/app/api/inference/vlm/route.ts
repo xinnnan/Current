@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 const PHYSICAL_PROMPT = `请分析给定图片中的物体，输出结构化描述（严格按照以下格式）：
@@ -18,6 +19,7 @@ Note: 运动类型 A(自由), B(滑动), C(旋转), D(铰接), CB(旋转+滑动)
 // POST /api/inference/vlm - Call MiniMax M2.7-highspeed for physical property inference
 export async function POST(request: Request) {
   const supabase = await createClient()
+  const admin = createAdminClient()
   
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
@@ -30,8 +32,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'job_id and image_url are required' }, { status: 400 })
   }
 
-  // Update job status
-  await supabase
+  // Check if MINIMAX_API_KEY is configured
+  if (!process.env.MINIMAX_API_KEY) {
+    console.error('MINIMAX_API_KEY not configured')
+    await admin
+      .from('inference_jobs')
+      .update({
+        status: 'failed',
+        error_message: 'MINIMAX_API_KEY not configured. Please add it to .env.local to enable VLM inference.',
+      })
+      .eq('id', job_id)
+
+    return NextResponse.json({ error: 'MINIMAX_API_KEY not configured' }, { status: 500 })
+  }
+
+  // Update job status (use admin to bypass RLS)
+  await admin
     .from('inference_jobs')
     .update({ status: 'vlm_processing', current_step: 'vlm_processing', progress: 0.1 })
     .eq('id', job_id)
@@ -61,7 +77,7 @@ export async function POST(request: Request) {
     if (!minimaxResponse.ok) {
       const errorText = await minimaxResponse.text()
       console.error('MiniMax API error:', errorText)
-      throw new Error(`MiniMax API error: ${minimaxResponse.status}`)
+      throw new Error(`MiniMax API error (${minimaxResponse.status}): ${errorText.slice(0, 200)}`)
     }
 
     const minimaxData = await minimaxResponse.json()
@@ -71,7 +87,7 @@ export async function POST(request: Request) {
     const parsedData = parseVLMOutput(vlmOutput)
 
     // Update job with VLM results
-    const { data: job } = await supabase
+    const { data: job } = await admin
       .from('inference_jobs')
       .select('asset_id')
       .eq('id', job_id)
@@ -79,7 +95,7 @@ export async function POST(request: Request) {
 
     if (job?.asset_id) {
       const dims = parsedData.dimensions as number[] | null
-      await supabase
+      await admin
         .from('assets')
         .update({
           name: (parsedData.name as string) || 'Unnamed',
@@ -95,7 +111,7 @@ export async function POST(request: Request) {
     }
 
     // Update job progress
-    await supabase
+    await admin
       .from('inference_jobs')
       .update({
         status: 'generating_3d',
@@ -123,7 +139,8 @@ export async function POST(request: Request) {
     })
 
   } catch (error) {
-    await supabase
+    console.error('VLM inference error:', error)
+    await admin
       .from('inference_jobs')
       .update({
         status: 'failed',
