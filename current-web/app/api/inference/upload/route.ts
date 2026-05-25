@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
+
+const STORAGE_BUCKET = 'inference-input'
 
 // POST /api/inference/upload - Upload image and start inference pipeline
 export async function POST(request: Request) {
@@ -29,21 +32,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'File too large. Max 10MB.' }, { status: 400 })
   }
 
+  // Use admin client for storage operations (bypasses RLS)
+  let adminClient
+  try {
+    adminClient = createAdminClient()
+  } catch (err) {
+    console.error('Failed to create admin client:', err)
+    return NextResponse.json({
+      error: 'Server configuration error: SUPABASE_SECRET_KEY not set. Please add it to .env.local',
+    }, { status: 500 })
+  }
+
+  // Ensure storage bucket exists
+  const { data: buckets } = await adminClient.storage.listBuckets()
+  const bucketExists = buckets?.some(b => b.name === STORAGE_BUCKET)
+  
+  if (!bucketExists) {
+    console.log(`Creating storage bucket: ${STORAGE_BUCKET}`)
+    const { error: createError } = await adminClient.storage.createBucket(STORAGE_BUCKET, {
+      public: true,
+      fileSizeLimit: '10MB',
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    })
+    if (createError) {
+      console.error('Failed to create bucket:', createError)
+      return NextResponse.json({
+        error: `Failed to create storage bucket: ${createError.message}`,
+      }, { status: 500 })
+    }
+  }
+
   // Upload image to Supabase Storage
   const ext = file.name.split('.').pop() || 'jpg'
   const fileName = `${user.id}/${Date.now()}.${ext}`
   
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from('inference-input')
+  const { data: uploadData, error: uploadError } = await adminClient.storage
+    .from(STORAGE_BUCKET)
     .upload(fileName, file, { contentType: file.type })
 
   if (uploadError || !uploadData) {
-    return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 })
+    console.error('Storage upload error:', uploadError)
+    return NextResponse.json({
+      error: `Failed to upload image: ${uploadError?.message || 'Unknown error'}`,
+    }, { status: 500 })
   }
 
   // Get public URL
-  const { data: urlData } = supabase.storage
-    .from('inference-input')
+  const { data: urlData } = adminClient.storage
+    .from(STORAGE_BUCKET)
     .getPublicUrl(fileName)
 
   const imageUrl = urlData.publicUrl
@@ -64,7 +100,10 @@ export async function POST(request: Request) {
     .single()
 
   if (assetError || !asset) {
-    return NextResponse.json({ error: 'Failed to create asset' }, { status: 500 })
+    console.error('Asset creation error:', assetError)
+    return NextResponse.json({
+      error: `Failed to create asset: ${assetError?.message || 'Unknown error'}`,
+    }, { status: 500 })
   }
 
   // Create inference job
@@ -82,7 +121,10 @@ export async function POST(request: Request) {
     .single()
 
   if (jobError || !job) {
-    return NextResponse.json({ error: 'Failed to create inference job' }, { status: 500 })
+    console.error('Job creation error:', jobError)
+    return NextResponse.json({
+      error: `Failed to create inference job: ${jobError?.message || 'Unknown error'}`,
+    }, { status: 500 })
   }
 
   // Trigger inference pipeline asynchronously
@@ -101,7 +143,7 @@ async function triggerInferencePipeline(jobId: string, imageUrl: string) {
     ? `https://${process.env.VERCEL_URL}` 
     : 'http://localhost:3000'
   
-  // Step 1: Call VLM API (智谱 GLM-4V)
+  // Step 1: Call VLM API (MiniMax M2.7-highspeed)
   try {
     await fetch(`${baseUrl}/api/inference/vlm`, {
       method: 'POST',
